@@ -116,8 +116,4 @@ jobs:
         run: npm install --legacy-peer-deps
 
       - name: Build Tauri app (debug)
-        run: npm run tauri build -- --debug
-        env:
-          # CI 环境不需要签名
-          TAURI_SIGNING_PRIVATE_KEY: ""
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: npm run tauri build -- --debug --no-bundle

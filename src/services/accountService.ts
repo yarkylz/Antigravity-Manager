@@ -195,3 +195,31 @@ export async function updateAccountLabel(accountId: string, label: string): Prom
     return await invoke('update_account_label', { accountId, label });
 }
 
+// Onboarding 相关
+export interface OnboardingResult {
+    success: boolean;
+    message: string;
+    status?: string;
+    details?: string;
+}
+
+export async function onboardAccount(accountId: string): Promise<OnboardingResult> {
+    return await invoke('onboard_account', { accountId });
+}
+
+// 测试请求相关
+export interface TestRequestResult {
+    success: boolean;
+    status: string;
+    message: string;
+    requires_verification?: boolean;
+    verification_url?: string;
+    is_banned?: boolean;
+    is_forbidden?: boolean;
+    details?: string;
+}
+
+export async function testAccountRequest(accountId: string): Promise<TestRequestResult> {
+    return await invoke('test_account_request', { accountId });
+}
+

@@ -31,6 +31,8 @@ interface AccountState {
     warmUpAccounts: () => Promise<string>;
     warmUpAccount: (accountId: string) => Promise<string>;
     updateAccountLabel: (accountId: string, label: string) => Promise<void>;
+    onboardAccount: (accountId: string) => Promise<accountService.OnboardingResult>;
+    testAccountRequest: (accountId: string) => Promise<accountService.TestRequestResult>;
 }
 
 export const useAccountStore = create<AccountState>((set, get) => ({
@@ -309,6 +311,28 @@ export const useAccountStore = create<AccountState>((set, get) => ({
             set({ accounts: updatedAccounts });
         } catch (error) {
             console.error('[AccountStore] Update label failed:', error);
+            throw error;
+        }
+    },
+
+    onboardAccount: async (accountId: string) => {
+        try {
+            const result = await accountService.onboardAccount(accountId);
+            await get().fetchAccounts();
+            return result;
+        } catch (error) {
+            console.error('[AccountStore] Onboard account failed:', error);
+            throw error;
+        }
+    },
+
+    testAccountRequest: async (accountId: string) => {
+        try {
+            const result = await accountService.testAccountRequest(accountId);
+            await get().fetchAccounts();
+            return result;
+        } catch (error) {
+            console.error('[AccountStore] Test account request failed:', error);
             throw error;
         }
     },

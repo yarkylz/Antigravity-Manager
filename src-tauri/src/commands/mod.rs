@@ -744,7 +744,6 @@ pub async fn update_last_check_time() -> Result<(), String> {
     crate::modules::update_checker::update_last_check_time()
 }
 
-
 /// 检测是否通过 Homebrew Cask 安装
 #[tauri::command]
 pub async fn check_homebrew_installation() -> Result<bool, String> {
@@ -757,7 +756,6 @@ pub async fn brew_upgrade_cask() -> Result<String, String> {
     modules::logger::log_info("收到前端触发的 Homebrew 升级请求");
     crate::modules::update_checker::brew_upgrade_cask().await
 }
-
 
 /// 获取更新设置
 #[tauri::command]
@@ -932,9 +930,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
                     success: false,
                     message: "Account is forbidden (403)".to_string(),
                     status: Some("forbidden".to_string()),
-                    details: Some(
-                        "The account has been denied access to the API".to_string(),
-                    ),
+                    details: Some("The account has been denied access to the API".to_string()),
                 })
             } else {
                 let model_count = quota_data.models.len();
@@ -1057,12 +1053,10 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
             let error_str = format!("{}", e);
 
             // Detect specific error conditions from response text
-            let is_banned =
-                error_str.contains("banned") || error_str.contains("suspended");
+            let is_banned = error_str.contains("banned") || error_str.contains("suspended");
             let requires_verification =
                 error_str.contains("verification") || error_str.contains("verify");
-            let is_forbidden =
-                error_str.contains("403") || error_str.contains("Forbidden");
+            let is_forbidden = error_str.contains("403") || error_str.contains("Forbidden");
 
             Ok(TestRequestResult {
                 success: false,

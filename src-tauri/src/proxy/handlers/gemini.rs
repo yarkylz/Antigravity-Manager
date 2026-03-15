@@ -161,7 +161,14 @@ pub async fn handle_generate(
         // [FIX #765] Pass session_id to wrap_request for signature injection
         // [NEW] 获取完整 Token 对象以注入动态规格 (dynamic > static default > 65535)
         let token_obj = token_manager.get_token_by_id(&account_id);
-        let wrapped_body = wrap_request(&body, &project_id, &mapped_model, Some(account_id.as_str()), Some(&session_id), token_obj.as_ref());
+        let wrapped_body = wrap_request(
+            &body,
+            &project_id,
+            &mapped_model,
+            Some(account_id.as_str()),
+            Some(&session_id),
+            token_obj.as_ref(),
+        );
 
         if debug_logger::is_enabled(&debug_cfg) {
             let payload = json!({

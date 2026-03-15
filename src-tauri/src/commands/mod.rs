@@ -876,6 +876,216 @@ pub async fn warm_up_account(account_id: String) -> Result<String, String> {
     modules::quota::warm_up_account(&account_id).await
 }
 
+// --- Onboarding & Test Request ---
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct OnboardingResult {
+    pub success: bool,
+    pub message: String,
+    pub status: Option<String>,
+    pub details: Option<String>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct TestRequestResult {
+    pub success: bool,
+    pub status: String,
+    pub message: String,
+    pub requires_verification: Option<bool>,
+    pub verification_url: Option<String>,
+    pub is_banned: Option<bool>,
+    pub is_forbidden: Option<bool>,
+    pub details: Option<String>,
+}
+
+/// Onboard account: initialize cloud code project, refresh token, verify access
+#[tauri::command]
+pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, String> {
+    modules::logger::log_info(&format!("Starting onboarding for account: {}", account_id));
+
+    let account = modules::load_account(&account_id)?;
+
+    // Step 1: Refresh token and fetch project_id (calls loadCodeAssist internally)
+    let (token, project_id) = match modules::quota::get_valid_token_for_warmup(&account).await {
+        Ok(t) => t,
+        Err(e) => {
+            return Ok(OnboardingResult {
+                success: false,
+                message: format!("Token refresh failed: {}", e),
+                status: Some("token_error".to_string()),
+                details: Some(e),
+            });
+        }
+    };
+
+    // Step 2: Fetch quota to verify account has API access
+    match modules::quota::fetch_quota(&token, &account.email, Some(&account_id)).await {
+        Ok((quota_data, _)) => {
+            let _ = modules::update_account_quota(&account_id, quota_data.clone());
+
+            if quota_data.is_forbidden {
+                let _ = crate::modules::account::mark_account_forbidden(
+                    &account_id,
+                    "Onboarding: 403 Forbidden",
+                );
+                Ok(OnboardingResult {
+                    success: false,
+                    message: "Account is forbidden (403)".to_string(),
+                    status: Some("forbidden".to_string()),
+                    details: Some(
+                        "The account has been denied access to the API".to_string(),
+                    ),
+                })
+            } else {
+                let model_count = quota_data.models.len();
+                let tier = quota_data
+                    .subscription_tier
+                    .clone()
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                modules::logger::log_info(&format!(
+                    "Onboarding completed for {}: {} models, tier: {}",
+                    account.email, model_count, tier
+                ));
+
+                Ok(OnboardingResult {
+                    success: true,
+                    message: format!(
+                        "Onboarding completed. {} models available. Tier: {}",
+                        model_count, tier
+                    ),
+                    status: Some("active".to_string()),
+                    details: Some(format!(
+                        "Project ID: {}, Subscription: {}",
+                        project_id, tier
+                    )),
+                })
+            }
+        }
+        Err(e) => {
+            let error_str = format!("{}", e);
+            Ok(OnboardingResult {
+                success: false,
+                message: format!("Onboarding failed: {}", error_str),
+                status: Some("error".to_string()),
+                details: Some(error_str),
+            })
+        }
+    }
+}
+
+/// Test account with a live API request to detect status (active, forbidden, banned, etc.)
+#[tauri::command]
+pub async fn test_account_request(account_id: String) -> Result<TestRequestResult, String> {
+    modules::logger::log_info(&format!(
+        "Starting test request for account: {}",
+        account_id
+    ));
+
+    let account = modules::load_account(&account_id)?;
+
+    // Step 1: Refresh token and fetch project_id
+    let (token, project_id) = match modules::quota::get_valid_token_for_warmup(&account).await {
+        Ok(t) => t,
+        Err(e) => {
+            return Ok(TestRequestResult {
+                success: false,
+                status: "token_error".to_string(),
+                message: format!("Token refresh failed: {}", e),
+                requires_verification: None,
+                verification_url: None,
+                is_banned: None,
+                is_forbidden: None,
+                details: Some(e),
+            });
+        }
+    };
+
+    // Step 2: Fetch quota as a lightweight live test (no tokens consumed)
+    match modules::quota::fetch_quota(&token, &account.email, Some(&account_id)).await {
+        Ok((quota_data, _)) => {
+            let _ = modules::update_account_quota(&account_id, quota_data.clone());
+
+            if quota_data.is_forbidden {
+                let _ = crate::modules::account::mark_account_forbidden(
+                    &account_id,
+                    "Test request: 403 Forbidden",
+                );
+                Ok(TestRequestResult {
+                    success: false,
+                    status: "forbidden".to_string(),
+                    message: "Account access denied (403 Forbidden)".to_string(),
+                    requires_verification: None,
+                    verification_url: None,
+                    is_banned: None,
+                    is_forbidden: Some(true),
+                    details: Some(
+                        "The account has been denied access. This may indicate the account is banned or requires verification.".to_string(),
+                    ),
+                })
+            } else {
+                let model_count = quota_data.models.len();
+                let tier = quota_data
+                    .subscription_tier
+                    .clone()
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                modules::logger::log_info(&format!(
+                    "Test request successful for {}: {} models, tier: {}",
+                    account.email, model_count, tier
+                ));
+
+                Ok(TestRequestResult {
+                    success: true,
+                    status: "active".to_string(),
+                    message: format!(
+                        "Account is active. {} models available. Tier: {}",
+                        model_count, tier
+                    ),
+                    requires_verification: Some(false),
+                    verification_url: None,
+                    is_banned: Some(false),
+                    is_forbidden: Some(false),
+                    details: Some(format!(
+                        "Project: {}, Tier: {}, Models: {}",
+                        project_id, tier, model_count
+                    )),
+                })
+            }
+        }
+        Err(e) => {
+            let error_str = format!("{}", e);
+
+            // Detect specific error conditions from response text
+            let is_banned =
+                error_str.contains("banned") || error_str.contains("suspended");
+            let requires_verification =
+                error_str.contains("verification") || error_str.contains("verify");
+            let is_forbidden =
+                error_str.contains("403") || error_str.contains("Forbidden");
+
+            Ok(TestRequestResult {
+                success: false,
+                status: if is_banned {
+                    "banned".to_string()
+                } else if is_forbidden {
+                    "forbidden".to_string()
+                } else if requires_verification {
+                    "verification_required".to_string()
+                } else {
+                    "error".to_string()
+                },
+                message: format!("Test request failed: {}", error_str),
+                requires_verification: Some(requires_verification),
+                verification_url: None,
+                is_banned: Some(is_banned),
+                is_forbidden: Some(is_forbidden),
+                details: Some(error_str),
+            })
+        }
+    }
+}
+
 /// 更新账号自定义标签
 #[tauri::command]
 pub async fn update_account_label(account_id: String, label: String) -> Result<(), String> {

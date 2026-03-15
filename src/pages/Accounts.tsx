@@ -52,6 +52,8 @@ function Accounts() {
     warmUpAccounts,
     warmUpAccount,
     updateAccountLabel,
+    onboardAccount,
+    testAccountRequest,
   } = useAccountStore();
   const { config, showAllQuotas, toggleShowAllQuotas } = useConfigStore();
 
@@ -108,6 +110,55 @@ function Accounts() {
       showToast(t('accounts.label_updated', 'Label updated'), 'success');
     } catch (error) {
       showToast(`${t('common.error')}: ${error}`, 'error');
+    }
+  };
+
+  const handleOnboard = async (accountId: string) => {
+    setRefreshingIds((prev) => {
+      const next = new Set(prev);
+      next.add(accountId);
+      return next;
+    });
+    try {
+      const result = await onboardAccount(accountId);
+      if (result.success) {
+        showToast(result.message || t('accounts.onboard_success'), 'success');
+      } else {
+        showToast(result.message || t('accounts.onboard_failed'), 'warning');
+      }
+    } catch (error) {
+      showToast(`${t('common.error')}: ${error}`, 'error');
+    } finally {
+      setRefreshingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
+      });
+    }
+  };
+
+  const handleTestRequest = async (accountId: string) => {
+    setRefreshingIds((prev) => {
+      const next = new Set(prev);
+      next.add(accountId);
+      return next;
+    });
+    try {
+      const result = await testAccountRequest(accountId);
+      if (result.success) {
+        showToast(`${t('accounts.test_request_result')}: ${result.status} - ${result.message}`, 'success');
+      } else {
+        const details = [result.status, result.message].filter(Boolean).join(' - ');
+        showToast(`${t('accounts.test_request_result')}: ${details}`, 'warning');
+      }
+    } catch (error) {
+      showToast(`${t('common.error')}: ${error}`, 'error');
+    } finally {
+      setRefreshingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(accountId);
+        return next;
+      });
     }
   };
 
@@ -1077,6 +1128,8 @@ function Accounts() {
                 onWarmup={handleWarmup}
                 onUpdateLabel={handleUpdateLabel}
                 onViewError={(id: string) => setErrorAccountId(id)}
+                onOnboard={handleOnboard}
+                onTestRequest={handleTestRequest}
               />
             </div>
           </div>
@@ -1104,6 +1157,8 @@ function Accounts() {
               onWarmup={handleWarmup}
               onUpdateLabel={handleUpdateLabel}
               onViewError={(id: string) => setErrorAccountId(id)}
+              onOnboard={handleOnboard}
+              onTestRequest={handleTestRequest}
             />
           </div>
         )}

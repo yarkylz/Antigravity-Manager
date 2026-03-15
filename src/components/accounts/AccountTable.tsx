@@ -43,6 +43,8 @@ import {
     Check,
     Clock,
     Bot,
+    Rocket,
+    TestTube2,
 } from 'lucide-react';
 import { Account } from '../../types/account';
 import { useTranslation } from 'react-i18next';
@@ -76,6 +78,8 @@ interface AccountTableProps {
     /** 拖拽排序回调，当用户完成拖拽时触发 */
     onReorder?: (accountIds: string[]) => void;
     onViewError: (accountId: string) => void;
+    onOnboard?: (accountId: string) => void;
+    onTestRequest?: (accountId: string) => void;
 }
 
 interface SortableRowProps {
@@ -96,6 +100,8 @@ interface SortableRowProps {
     onWarmup?: () => void;
     onUpdateLabel?: (label: string) => void;
     onViewError: () => void;
+    onOnboard?: () => void;
+    onTestRequest?: () => void;
 }
 
 interface AccountRowContentProps {
@@ -114,6 +120,8 @@ interface AccountRowContentProps {
     onWarmup?: () => void;
     onUpdateLabel?: (label: string) => void;
     onViewError: () => void;
+    onOnboard?: () => void;
+    onTestRequest?: () => void;
 }
 
 // ============================================================================
@@ -216,6 +224,8 @@ function SortableAccountRow({
     onWarmup,
     onUpdateLabel,
     onViewError,
+    onOnboard,
+    onTestRequest,
 }: SortableRowProps) {
     const { t } = useTranslation();
     const {
@@ -282,6 +292,8 @@ function SortableAccountRow({
                 onWarmup={onWarmup}
                 onUpdateLabel={onUpdateLabel}
                 onViewError={onViewError}
+                onOnboard={onOnboard}
+                onTestRequest={onTestRequest}
             />
         </tr>
     );
@@ -307,6 +319,8 @@ function AccountRowContent({
     onWarmup,
     onUpdateLabel,
     onViewError,
+    onOnboard,
+    onTestRequest,
 }: AccountRowContentProps) {
     const { t } = useTranslation();
     const { config, showAllQuotas } = useConfigStore();
@@ -644,6 +658,26 @@ function AccountRowContent({
                     >
                         <Download className="w-3.5 h-3.5" />
                     </button>
+                    {onOnboard && (
+                        <button
+                            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-all"
+                            onClick={(e) => { e.stopPropagation(); onOnboard(); }}
+                            title={t('accounts.onboard')}
+                            disabled={isDisabled}
+                        >
+                            <Rocket className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                    {onTestRequest && (
+                        <button
+                            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-all"
+                            onClick={(e) => { e.stopPropagation(); onTestRequest(); }}
+                            title={t('accounts.test_request')}
+                            disabled={isDisabled}
+                        >
+                            <TestTube2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                     <button
                         className={cn(
                             "p-1.5 rounded-lg transition-all",
@@ -700,6 +734,8 @@ function AccountTable({
     onWarmup,
     onUpdateLabel,
     onViewError,
+    onOnboard,
+    onTestRequest,
 }: AccountTableProps) {
     const { t } = useTranslation();
 
@@ -798,6 +834,8 @@ function AccountTable({
                                     onWarmup={onWarmup ? () => onWarmup(account.id) : undefined}
                                     onUpdateLabel={onUpdateLabel ? (label: string) => onUpdateLabel(account.id, label) : undefined}
                                     onViewError={() => onViewError(account.id)}
+                                    onOnboard={onOnboard ? () => onOnboard(account.id) : undefined}
+                                    onTestRequest={onTestRequest ? () => onTestRequest(account.id) : undefined}
                                 />
                             ))}
                         </tbody>

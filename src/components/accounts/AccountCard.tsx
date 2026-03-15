@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, ToggleLeft, ToggleRight, Fingerprint, Sparkles, Tag, X, Check, Clock, Bot } from 'lucide-react';
+import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, ToggleLeft, ToggleRight, Fingerprint, Sparkles, Tag, X, Check, Clock, Bot, Rocket, TestTube2 } from 'lucide-react';
 import { Account } from '../../types/account';
 import { cn } from '../../utils/cn';
 import { useTranslation } from 'react-i18next';
@@ -24,6 +24,8 @@ interface AccountCardProps {
     onWarmup?: () => void;
     onUpdateLabel?: (label: string) => void;
     onViewError: () => void;
+    onOnboard?: () => void;
+    onTestRequest?: () => void;
 }
 
 // 使用统一的模型配置
@@ -34,7 +36,7 @@ const DEFAULT_MODELS = Object.entries(MODEL_CONFIG).map(([id, config]) => ({
     Icon: config.Icon
 }));
 
-function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, isRefreshing, isSwitching = false, onSwitch, onRefresh, onViewDetails, onExport, onDelete, onToggleProxy, onViewDevice, onWarmup, onUpdateLabel, onViewError }: AccountCardProps) {
+function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, isRefreshing, isSwitching = false, onSwitch, onRefresh, onViewDetails, onExport, onDelete, onToggleProxy, onViewDevice, onWarmup, onUpdateLabel, onViewError, onOnboard, onTestRequest }: AccountCardProps) {
     const { t } = useTranslation();
     const { config, showAllQuotas } = useConfigStore();
     const isDisabled = Boolean(account.disabled);
@@ -350,6 +352,26 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                     >
                         <Download className="w-3.5 h-3.5" />
                     </button>
+                    {onOnboard && (
+                        <button
+                            className="p-1.5 text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 rounded-lg transition-all"
+                            onClick={(e) => { e.stopPropagation(); onOnboard(); }}
+                            title={t('accounts.onboard')}
+                            disabled={isDisabled}
+                        >
+                            <Rocket className="w-3.5 h-3.5" />
+                        </button>
+                    )}
+                    {onTestRequest && (
+                        <button
+                            className="p-1.5 text-gray-400 hover:text-violet-600 dark:hover:text-violet-400 hover:bg-violet-50 dark:hover:bg-violet-900/30 rounded-lg transition-all"
+                            onClick={(e) => { e.stopPropagation(); onTestRequest(); }}
+                            title={t('accounts.test_request')}
+                            disabled={isDisabled}
+                        >
+                            <TestTube2 className="w-3.5 h-3.5" />
+                        </button>
+                    )}
                     <button
                         className={cn(
                             "p-1.5 rounded-lg transition-all",

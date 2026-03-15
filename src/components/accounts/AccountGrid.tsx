@@ -19,10 +19,12 @@ interface AccountGridProps {
     onWarmup?: (accountId: string) => void;
     onUpdateLabel?: (accountId: string, label: string) => void;
     onViewError: (accountId: string) => void;
+    onOnboard?: (accountId: string) => void;
+    onTestRequest?: (accountId: string) => void;
 }
 
 
-function AccountGrid({ accounts, selectedIds, refreshingIds, onToggleSelect, currentAccountId, switchingAccountId, onSwitch, onRefresh, onViewDetails, onExport, onDelete, onToggleProxy, onViewDevice, onWarmup, onUpdateLabel, onViewError }: AccountGridProps) {
+function AccountGrid({ accounts, selectedIds, refreshingIds, onToggleSelect, currentAccountId, switchingAccountId, onSwitch, onRefresh, onViewDetails, onExport, onDelete, onToggleProxy, onViewDevice, onWarmup, onUpdateLabel, onViewError, onOnboard, onTestRequest }: AccountGridProps) {
     const { t } = useTranslation();
     if (accounts.length === 0) {
         return (
@@ -54,6 +56,8 @@ function AccountGrid({ accounts, selectedIds, refreshingIds, onToggleSelect, cur
                     onWarmup={onWarmup ? () => onWarmup(account.id) : undefined}
                     onUpdateLabel={onUpdateLabel ? (label: string) => onUpdateLabel(account.id, label) : undefined}
                     onViewError={() => onViewError(account.id)}
+                    onOnboard={onOnboard ? () => onOnboard(account.id) : undefined}
+                    onTestRequest={onTestRequest ? () => onTestRequest(account.id) : undefined}
                 />
             ))}
         </div>

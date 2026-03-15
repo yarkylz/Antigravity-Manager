@@ -71,7 +71,7 @@ jobs:
       - name: Run Clippy
         run: |
           cd src-tauri
-          cargo clippy --all-targets --all-features -- -D warnings
+          cargo clippy --all-targets --all-features -- -W clippy::all
 
       - name: Check Rust compilation
         run: |

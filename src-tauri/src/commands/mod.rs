@@ -903,7 +903,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
 
     let account = modules::load_account(&account_id)?;
 
-    // Step 1: Refresh token and fetch project_id (calls loadCodeAssist internally)
+    // Step 1: Refresh token and fetch project_id (loadCodeAssist → onboardUser fallback)
     let (token, project_id) = match modules::quota::get_valid_token_for_warmup(&account).await {
         Ok(t) => t,
         Err(e) => {

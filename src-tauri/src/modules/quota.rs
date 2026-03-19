@@ -143,6 +143,14 @@ async fn fetch_project_id(
                 if let Ok(data) = res.json::<LoadProjectResponse>().await {
                     let project_id = data.project_id.clone();
 
+                    // Go FetchProjectID (auth.go:180-195): extract default tier for onboarding
+                    let onboard_tier_id = data
+                        .allowed_tiers
+                        .as_ref()
+                        .and_then(|tiers| tiers.iter().find(|t| t.is_default == Some(true)))
+                        .and_then(|t| t.id.clone())
+                        .unwrap_or_else(|| "legacy-tier".to_string());
+
                     // Core logic: Multi-level fallback for tier extraction
                     // 1. Paid Tier (Google One AI Premium etc.)
                     // 2. Current Tier (If not ineligible)
@@ -186,7 +194,17 @@ async fn fetch_project_id(
                         ));
                     }
 
-                    return (project_id, subscription_tier);
+                    let final_project_id = if project_id.is_some() {
+                        project_id
+                    } else {
+                        crate::modules::logger::log_info(&format!(
+                            "📡 [{}] No project_id from loadCodeAssist, calling onboardUser (tier: {})",
+                            email, onboard_tier_id
+                        ));
+                        call_onboard_user(access_token, &onboard_tier_id, account_id).await
+                    };
+
+                    return (final_project_id, subscription_tier);
                 }
             } else {
                 crate::modules::logger::log_warn(&format!(
@@ -205,6 +223,124 @@ async fn fetch_project_id(
     }
 
     (None, None)
+}
+
+/// Onboard user: poll the onboardUser endpoint to provision a cloud project.
+/// Mirrors Go CLIProxyAPI OnboardUser (auth.go:245-344).
+async fn call_onboard_user(
+    access_token: &str,
+    tier_id: &str,
+    account_id: Option<&str>,
+) -> Option<String> {
+    let client = create_standard_client(account_id).await;
+    let body = json!({
+        "tierId": tier_id,
+        "metadata": {
+            "ideType": "ANTIGRAVITY",
+            "platform": "PLATFORM_UNSPECIFIED",
+            "pluginType": "GEMINI"
+        }
+    });
+
+    let url = format!("{}/v1internal:onboardUser", CLOUD_CODE_BASE_URL);
+    let max_attempts = 5;
+
+    for attempt in 1..=max_attempts {
+        tracing::debug!("onboardUser polling attempt {}/{}", attempt, max_attempts);
+
+        let res = client
+            .post(&url)
+            .header(
+                rquest::header::AUTHORIZATION,
+                format!("Bearer {}", access_token),
+            )
+            .header(rquest::header::CONTENT_TYPE, "application/json")
+            .header(
+                rquest::header::USER_AGENT,
+                crate::constants::NATIVE_OAUTH_USER_AGENT.as_str(),
+            )
+            .header(
+                "X-Goog-Api-Client",
+                "google-cloud-sdk vscode_cloudshelleditor/0.1",
+            )
+            .header(
+                "Client-Metadata",
+                r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#,
+            )
+            .json(&body)
+            .send()
+            .await;
+
+        match res {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    let status = response.status();
+                    let text = response.text().await.unwrap_or_default();
+                    let preview = if text.len() > 200 {
+                        &text[..200]
+                    } else {
+                        &text
+                    };
+                    crate::modules::logger::log_warn(&format!(
+                        "⚠️ onboardUser HTTP {}: {}",
+                        status, preview
+                    ));
+                    return None;
+                }
+
+                if let Ok(data) = response.json::<serde_json::Value>().await {
+                    if data.get("done").and_then(|v| v.as_bool()) == Some(true) {
+                        // Handles both string and {id: string} formats (Go auth.go:309-316)
+                        let project_id = data
+                            .get("response")
+                            .and_then(|resp| resp.get("cloudaicompanionProject"))
+                            .and_then(|proj| {
+                                if let Some(s) = proj.as_str() {
+                                    let trimmed = s.trim().to_string();
+                                    if !trimmed.is_empty() {
+                                        return Some(trimmed);
+                                    }
+                                }
+                                proj.get("id")
+                                    .and_then(|id| id.as_str())
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                            });
+
+                        if project_id.is_some() {
+                            return project_id;
+                        }
+
+                        crate::modules::logger::log_warn(
+                            "⚠️ onboardUser: done=true but no project_id in response",
+                        );
+                        return None;
+                    }
+
+                    if attempt < max_attempts {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    }
+                } else {
+                    crate::modules::logger::log_warn(
+                        "⚠️ onboardUser: failed to parse response JSON",
+                    );
+                    return None;
+                }
+            }
+            Err(e) => {
+                crate::modules::logger::log_error(&format!(
+                    "❌ onboardUser network error: {}",
+                    e
+                ));
+                return None;
+            }
+        }
+    }
+
+    crate::modules::logger::log_warn(
+        "⚠️ onboardUser: max polling attempts reached without done=true",
+    );
+    None
 }
 
 /// Unified entry point for fetching account quota

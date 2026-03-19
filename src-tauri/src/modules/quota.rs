@@ -242,7 +242,9 @@ async fn call_onboard_user(
         }
     });
 
-    let url = format!("{}/v1internal:onboardUser", CLOUD_CODE_BASE_URL);
+    // Use production endpoint for onboarding (Go uses "https://cloudcode-pa.googleapis.com",
+    // not the sandbox/daily endpoint). Sandbox returns done=true but no project_id.
+    let url = "https://cloudcode-pa.googleapis.com/v1internal:onboardUser".to_string();
     let max_attempts = 5;
 
     for attempt in 1..=max_attempts {

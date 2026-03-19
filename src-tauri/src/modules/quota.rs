@@ -111,7 +111,7 @@ async fn create_long_standard_client(account_id: Option<&str>) -> rquest::Client
     }
 }
 
-const CLOUD_CODE_BASE_URL: &str = "https://daily-cloudcode-pa.sandbox.googleapis.com";
+const CLOUD_CODE_BASE_URL: &str = "https://cloudcode-pa.googleapis.com";
 
 /// Fetch project ID and subscription tier
 async fn fetch_project_id(
@@ -120,7 +120,7 @@ async fn fetch_project_id(
     account_id: Option<&str>,
 ) -> (Option<String>, Option<String>) {
     let client = create_standard_client(account_id).await;
-    let meta = json!({"metadata": {"ideType": "ANTIGRAVITY"}});
+    let meta = json!({"metadata": {"ideType": "ANTIGRAVITY", "platform": "PLATFORM_UNSPECIFIED", "pluginType": "GEMINI"}});
 
     let res = client
         .post(format!("{}/v1internal:loadCodeAssist", CLOUD_CODE_BASE_URL))
@@ -132,6 +132,14 @@ async fn fetch_project_id(
         .header(
             rquest::header::USER_AGENT,
             crate::constants::NATIVE_OAUTH_USER_AGENT.as_str(),
+        )
+        .header(
+            "X-Goog-Api-Client",
+            "google-cloud-sdk vscode_cloudshelleditor/0.1",
+        )
+        .header(
+            "Client-Metadata",
+            r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#,
         )
         .json(&meta)
         .send()

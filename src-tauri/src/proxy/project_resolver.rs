@@ -3,12 +3,14 @@ use serde_json::Value;
 /// 使用 Antigravity 的 loadCodeAssist API 获取 project_id
 /// 这是获取 cloudaicompanionProject 的正确方式
 pub async fn fetch_project_id(access_token: &str) -> Result<String, String> {
-    // 使用 Sandbox 环境，避免 Prod 环境的 429 错误
-    let url = "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:loadCodeAssist";
+    // Use production endpoint — sandbox returns done=true but no project_id
+    let url = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
 
     let request_body = serde_json::json!({
         "metadata": {
-            "ideType": "ANTIGRAVITY"
+            "ideType": "ANTIGRAVITY",
+            "platform": "PLATFORM_UNSPECIFIED",
+            "pluginType": "GEMINI"
         }
     });
 
@@ -16,9 +18,16 @@ pub async fn fetch_project_id(access_token: &str) -> Result<String, String> {
     let response = client
         .post(url)
         .bearer_auth(access_token)
-        // .header("Host", "cloudcode-pa.googleapis.com") // 移除 Host header，因为已切换域名
         .header("User-Agent", crate::constants::USER_AGENT.as_str())
         .header("Content-Type", "application/json")
+        .header(
+            "X-Goog-Api-Client",
+            "google-cloud-sdk vscode_cloudshelleditor/0.1",
+        )
+        .header(
+            "Client-Metadata",
+            r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#,
+        )
         .json(&request_body)
         .send()
         .await

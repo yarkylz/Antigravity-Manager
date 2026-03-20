@@ -901,23 +901,194 @@ pub struct TestRequestResult {
 pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, String> {
     modules::logger::log_info(&format!("Starting onboarding for account: {}", account_id));
 
-    let account = modules::load_account(&account_id)?;
+    let mut account = modules::load_account(&account_id)?;
 
-    // Step 1: Refresh token and fetch project_id (loadCodeAssist → onboardUser fallback)
-    let (token, project_id) = match modules::quota::get_valid_token_for_warmup(&account).await {
-        Ok(t) => t,
-        Err(e) => {
+    let token =
+        match crate::modules::oauth::ensure_fresh_token(&account.token, Some(&account.id)).await {
+            Ok(new_token) => {
+                if new_token.access_token != account.token.access_token {
+                    account.token = new_token.clone();
+                    if let Err(error) = crate::modules::account::save_account(&account) {
+                        let error_message = format!(
+                            "Failed to save refreshed token during onboarding: {}",
+                            error
+                        );
+                        modules::logger::log_warn(&format!(
+                            "[Onboarding] Failed to save refreshed token: {}",
+                            error
+                        ));
+                        return Ok(OnboardingResult {
+                            success: false,
+                            message: error_message.clone(),
+                            status: Some("token_persistence_error".to_string()),
+                            details: Some(error_message),
+                        });
+                    } else {
+                        modules::logger::log_info(&format!(
+                            "[Onboarding] Successfully refreshed and saved new token for {}",
+                            account.email
+                        ));
+                    }
+                }
+
+                new_token.access_token
+            }
+            Err(error) => {
+                return Ok(OnboardingResult {
+                    success: false,
+                    message: format!("Token refresh failed: {}", error),
+                    status: Some("token_error".to_string()),
+                    details: Some(error),
+                });
+            }
+        };
+
+    let resolved_project = match modules::quota::resolve_project_with_contract(
+        &token,
+        Some(&account.email),
+        Some(&account.id),
+    )
+    .await
+    {
+        modules::quota::ProjectResolutionOutcome::Resolved(project) => project,
+        modules::quota::ProjectResolutionOutcome::InProgressExhausted { subscription_tier } => {
             return Ok(OnboardingResult {
                 success: false,
-                message: format!("Token refresh failed: {}", e),
-                status: Some("token_error".to_string()),
-                details: Some(e),
+                message: "Project acquisition did not finish before polling timed out".to_string(),
+                status: Some("project_poll_exhausted".to_string()),
+                details: Some(match subscription_tier {
+                    Some(tier) => format!(
+                        "onboardUser remained in progress after maximum polling attempts; subscription tier: {}",
+                        tier
+                    ),
+                    None => {
+                        "onboardUser remained in progress after maximum polling attempts"
+                            .to_string()
+                    }
+                }),
+            });
+        }
+        modules::quota::ProjectResolutionOutcome::TerminalMissingProject {
+            stage,
+            subscription_tier,
+        } => {
+            let (message, status) = match stage {
+                modules::quota::ProjectResolutionStage::LoadCodeAssist => (
+                    "Project resolution completed without a real project ID from loadCodeAssist",
+                    "project_resolution_failed",
+                ),
+                modules::quota::ProjectResolutionStage::OnboardUser => (
+                    "Project resolution completed without a real project ID after onboarding",
+                    "project_missing_after_done",
+                ),
+            };
+
+            return Ok(OnboardingResult {
+                success: false,
+                message: message.to_string(),
+                status: Some(status.to_string()),
+                details: Some(match subscription_tier {
+                    Some(tier) => format!(
+                        "{} returned a terminal response without a project_id; subscription tier: {}",
+                        stage.as_str(),
+                        tier
+                    ),
+                    None => format!(
+                        "{} returned a terminal response without a project_id",
+                        stage.as_str()
+                    ),
+                }),
+            });
+        }
+        modules::quota::ProjectResolutionOutcome::TransportFailure {
+            stage,
+            error,
+            subscription_tier,
+        } => {
+            return Ok(OnboardingResult {
+                success: false,
+                message: format!(
+                    "Project resolution transport failure during {}",
+                    stage.as_str()
+                ),
+                status: Some("project_resolution_failed".to_string()),
+                details: Some(match subscription_tier {
+                    Some(tier) => format!(
+                        "{} transport failure: {}; subscription tier: {}",
+                        stage.as_str(),
+                        error,
+                        tier
+                    ),
+                    None => format!("{} transport failure: {}", stage.as_str(), error),
+                }),
+            });
+        }
+        modules::quota::ProjectResolutionOutcome::LoadHttpFailure {
+            status,
+            body_preview,
+            subscription_tier,
+        } => {
+            return Ok(OnboardingResult {
+                success: false,
+                message: "Project resolution failed during loadCodeAssist".to_string(),
+                status: Some("project_resolution_failed".to_string()),
+                details: Some(match subscription_tier {
+                    Some(tier) => format!(
+                        "loadCodeAssist returned HTTP {}: {}; subscription tier: {}",
+                        status, body_preview, tier
+                    ),
+                    None => format!("loadCodeAssist returned HTTP {}: {}", status, body_preview),
+                }),
+            });
+        }
+        modules::quota::ProjectResolutionOutcome::OnboardHttpFailure {
+            status,
+            body_preview,
+            subscription_tier,
+        } => {
+            return Ok(OnboardingResult {
+                success: false,
+                message: "Project resolution failed during onboarding".to_string(),
+                status: Some("project_resolution_failed".to_string()),
+                details: Some(match subscription_tier {
+                    Some(tier) => format!(
+                        "onboardUser returned HTTP {}: {}; subscription tier: {}",
+                        status, body_preview, tier
+                    ),
+                    None => format!("onboardUser returned HTTP {}: {}", status, body_preview),
+                }),
+            });
+        }
+        modules::quota::ProjectResolutionOutcome::ParseFailure {
+            stage,
+            error,
+            subscription_tier,
+        } => {
+            return Ok(OnboardingResult {
+                success: false,
+                message: format!("Project resolution parse failure during {}", stage.as_str()),
+                status: Some("project_resolution_failed".to_string()),
+                details: Some(match subscription_tier {
+                    Some(tier) => format!(
+                        "{} parse failure: {}; subscription tier: {}",
+                        stage.as_str(),
+                        error,
+                        tier
+                    ),
+                    None => format!("{} parse failure: {}", stage.as_str(), error),
+                }),
             });
         }
     };
 
-    // Step 2: Fetch quota to verify account has API access
-    match modules::quota::fetch_quota(&token, &account.email, Some(&account_id)).await {
+    match modules::quota::fetch_quota_with_cache(
+        &token,
+        &account.email,
+        Some(&resolved_project.project_id),
+        Some(&account_id),
+    )
+    .await
+    {
         Ok((quota_data, _)) => {
             let _ = modules::update_account_quota(&account_id, quota_data.clone());
 
@@ -937,6 +1108,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
                 let tier = quota_data
                     .subscription_tier
                     .clone()
+                    .or_else(|| resolved_project.subscription_tier.clone())
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 modules::logger::log_info(&format!(
@@ -953,7 +1125,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
                     status: Some("active".to_string()),
                     details: Some(format!(
                         "Project ID: {}, Subscription: {}",
-                        project_id, tier
+                        resolved_project.project_id, tier
                     )),
                 })
             }

@@ -2007,7 +2007,7 @@ impl TokenManager {
         )
         .map_err(|e| format!("解析 JSON 失败: {}", e))?;
 
-        content["token"]["project_id"] = serde_json::Value::String(project_id);
+        content["token"]["project_id"] = serde_json::Value::String(project_id.clone());
 
         std::fs::write(path, serde_json::to_string_pretty(&content).unwrap())
             .map_err(|e| format!("写入文件失败: {}", e))?;

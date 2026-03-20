@@ -1491,7 +1491,9 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
             account.name.clone(),
             account.token.clone(),
         )
-        .map_err(AppError::Account)
+        .map_err(AppError::Account)?;
+
+        Ok(())
     }
 
     // 1. Time-based check - ensure Token is valid first

@@ -9,6 +9,56 @@ use tokio_util::sync::CancellationToken;
 use crate::proxy::rate_limit::RateLimitTracker;
 use crate::proxy::sticky_config::StickySessionConfig;
 
+async fn resolve_project_id_for_runtime(
+    access_token: &str,
+    account_id: Option<&str>,
+    email: Option<&str>,
+) -> Result<String, String> {
+    match crate::modules::quota::resolve_project_with_contract(access_token, email, account_id)
+        .await
+    {
+        crate::modules::quota::ProjectResolutionOutcome::Resolved(project) => {
+            Ok(project.project_id)
+        }
+        crate::modules::quota::ProjectResolutionOutcome::InProgressExhausted { .. } => Err(
+            "project resolution exhausted 5 onboardUser polling attempts without completion"
+                .to_string(),
+        ),
+        crate::modules::quota::ProjectResolutionOutcome::TransportFailure {
+            stage, error, ..
+        } => Err(format!("{} transport failure: {}", stage.as_str(), error)),
+        crate::modules::quota::ProjectResolutionOutcome::LoadHttpFailure {
+            status,
+            body_preview,
+            ..
+        } => Err(format!(
+            "loadCodeAssist returned HTTP {}: {}",
+            status, body_preview
+        )),
+        crate::modules::quota::ProjectResolutionOutcome::OnboardHttpFailure {
+            status,
+            body_preview,
+            ..
+        } => Err(format!(
+            "onboardUser returned HTTP {}: {}",
+            status, body_preview
+        )),
+        crate::modules::quota::ProjectResolutionOutcome::TerminalMissingProject {
+            stage, ..
+        } => Err(format!(
+            "{} completed without returning a real project_id",
+            stage.as_str()
+        )),
+        crate::modules::quota::ProjectResolutionOutcome::ParseFailure { stage, error, .. } => {
+            Err(format!("{} parse failure: {}", stage.as_str(), error))
+        }
+    }
+}
+
+fn normalized_real_project_id(project_id: Option<&str>) -> Option<String> {
+    crate::modules::quota::normalize_real_project_id(project_id)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OnDiskAccountState {
     Enabled,
@@ -1406,33 +1456,46 @@ impl TokenManager {
                             }
 
                             // 确保有 project_id (filter empty strings to trigger re-fetch)
-                            let project_id = if let Some(pid) = &token.project_id {
-                                if pid.is_empty() {
-                                    None
-                                } else {
-                                    Some(pid.clone())
-                                }
-                            } else {
-                                None
-                            };
+                            let project_id =
+                                normalized_real_project_id(token.project_id.as_deref());
                             let project_id = if let Some(pid) = project_id {
                                 pid
                             } else {
-                                match crate::proxy::project_resolver::fetch_project_id(
+                                match resolve_project_id_for_runtime(
                                     &token.access_token,
+                                    Some(&token.account_id),
+                                    Some(&token.email),
                                 )
                                 .await
                                 {
                                     Ok(pid) => {
+                                        let persisted_pid = self
+                                            .save_project_id(&token.account_id, &pid)
+                                            .await
+                                            .map_err(|error| {
+                                                format!(
+                                                    "Preferred account resolved project_id but failed to persist it: {}",
+                                                    error
+                                                )
+                                            })?;
                                         if let Some(mut entry) =
                                             self.tokens.get_mut(&token.account_id)
                                         {
-                                            entry.project_id = Some(pid.clone());
+                                            entry.project_id = Some(persisted_pid.clone());
                                         }
-                                        let _ = self.save_project_id(&token.account_id, &pid).await;
-                                        pid
+                                        persisted_pid
                                     }
-                                    Err(_) => "bamboo-precept-lgxtn".to_string(), // fallback
+                                    Err(error) => {
+                                        tracing::warn!(
+                                            "Preferred account {} missing usable project_id: {}",
+                                            token.email,
+                                            error
+                                        );
+                                        return Err(format!(
+                                            "Preferred account missing usable project_id: {}",
+                                            error
+                                        ));
+                                    }
                                 }
                             };
 
@@ -1812,35 +1875,66 @@ impl TokenManager {
             }
 
             // 4. 确保有 project_id (filter empty strings to trigger re-fetch)
-            let project_id = if let Some(pid) = &token.project_id {
-                if pid.is_empty() {
-                    None
-                } else {
-                    Some(pid.clone())
-                }
-            } else {
-                None
-            };
+            let project_id = normalized_real_project_id(token.project_id.as_deref());
             let project_id = if let Some(pid) = project_id {
                 pid
             } else {
                 tracing::debug!("账号 {} 缺少 project_id，尝试获取...", token.email);
-                match crate::proxy::project_resolver::fetch_project_id(&token.access_token).await {
+                match resolve_project_id_for_runtime(
+                    &token.access_token,
+                    Some(&token.account_id),
+                    Some(&token.email),
+                )
+                .await
+                {
                     Ok(pid) => {
+                        let persisted_pid = match self
+                            .save_project_id(&token.account_id, &pid)
+                            .await
+                        {
+                            Ok(project_id) => project_id,
+                            Err(error) => {
+                                last_error = Some(format!(
+                                    "Project resolution succeeded for {} but failed to persist project_id: {}",
+                                    token.email, error
+                                ));
+                                attempted.insert(token.account_id.clone());
+
+                                if quota_group != "image_gen" {
+                                    if matches!(&last_used_account_id, Some((id, _)) if id == &token.account_id)
+                                    {
+                                        need_update_last_used =
+                                            Some((String::new(), std::time::Instant::now()));
+                                    }
+                                }
+                                continue;
+                            }
+                        };
                         if let Some(mut entry) = self.tokens.get_mut(&token.account_id) {
-                            entry.project_id = Some(pid.clone());
+                            entry.project_id = Some(persisted_pid.clone());
                         }
-                        let _ = self.save_project_id(&token.account_id, &pid).await;
-                        pid
+                        persisted_pid
                     }
-                    Err(e) => {
+                    Err(error) => {
                         tracing::warn!(
-                            "Failed to fetch project_id for {}, using fallback: {}",
+                            "Skipping account {} because project_id resolution failed: {}",
                             token.email,
-                            e
+                            error
                         );
-                        // [FIX #1794] 为 503 问题提供稳定兜底，不跳过该账号
-                        "bamboo-precept-lgxtn".to_string()
+                        last_error = Some(format!(
+                            "Project resolution failed for {}: {}",
+                            token.email, error
+                        ));
+                        attempted.insert(token.account_id.clone());
+
+                        if quota_group != "image_gen" {
+                            if matches!(&last_used_account_id, Some((id, _)) if id == &token.account_id)
+                            {
+                                need_update_last_used =
+                                    Some((String::new(), std::time::Instant::now()));
+                            }
+                        }
+                        continue;
                     }
                 }
             };
@@ -1900,7 +1994,10 @@ impl TokenManager {
     }
 
     /// 保存 project_id 到账号文件
-    async fn save_project_id(&self, account_id: &str, project_id: &str) -> Result<(), String> {
+    async fn save_project_id(&self, account_id: &str, project_id: &str) -> Result<String, String> {
+        let project_id = normalized_real_project_id(Some(project_id))
+            .ok_or_else(|| "Refusing to persist empty or non-real project_id".to_string())?;
+
         let entry = self.tokens.get(account_id).ok_or("账号不存在")?;
 
         let path = &entry.account_path;
@@ -1910,13 +2007,13 @@ impl TokenManager {
         )
         .map_err(|e| format!("解析 JSON 失败: {}", e))?;
 
-        content["token"]["project_id"] = serde_json::Value::String(project_id.to_string());
+        content["token"]["project_id"] = serde_json::Value::String(project_id);
 
         std::fs::write(path, serde_json::to_string_pretty(&content).unwrap())
             .map_err(|e| format!("写入文件失败: {}", e))?;
 
         tracing::debug!("已保存 project_id 到账号 {}", account_id);
-        Ok(())
+        Ok(project_id)
     }
 
     /// 保存刷新后的 token 到账号文件
@@ -1994,9 +2091,27 @@ impl TokenManager {
             None => return Err(format!("未找到账号: {}", email)),
         };
 
-        let project_id = project_id_opt
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "bamboo-precept-lgxtn".to_string());
+        let project_id = if let Some(pid) = normalized_real_project_id(project_id_opt.as_deref()) {
+            pid
+        } else {
+            let pid = resolve_project_id_for_runtime(
+                &current_access_token,
+                Some(&account_id),
+                Some(email),
+            )
+            .await
+            .map_err(|e| format!("[Warmup] Missing project_id for {}: {}", email, e))?;
+            let persisted_pid = self.save_project_id(&account_id, &pid).await.map_err(|e| {
+                format!(
+                    "[Warmup] Resolved project_id for {} but failed to persist it: {}",
+                    email, e
+                )
+            })?;
+            if let Some(mut entry) = self.tokens.get_mut(&account_id) {
+                entry.project_id = Some(persisted_pid.clone());
+            }
+            persisted_pid
+        };
 
         // 检查是否过期 (提前5分钟)
         if now < timestamp + expires_in - 300 {
@@ -2573,9 +2688,10 @@ impl TokenManager {
             .map_err(|e| format!("Invalid refresh token: {}", e))?;
 
         // 2. 获取项目 ID (Project ID)
-        let project_id = crate::proxy::project_resolver::fetch_project_id(&token_info.access_token)
-            .await
-            .unwrap_or_else(|_| "bamboo-precept-lgxtn".to_string()); // Fallback
+        let project_id =
+            resolve_project_id_for_runtime(&token_info.access_token, None, Some(email))
+                .await
+                .map_err(|e| format!("Failed to resolve project_id: {}", e))?;
 
         // 3. 委托给 modules::account::add_account 处理 (包含文件写入、索引更新、锁)
         let email_clone = email.to_string();

@@ -1466,6 +1466,34 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
     use crate::modules::oauth;
     use reqwest::StatusCode;
 
+    fn persist_resolved_project_id(
+        account: &mut Account,
+        project_id: Option<&str>,
+    ) -> Result<(), AppError> {
+        let Some(project_id) = crate::modules::quota::normalize_real_project_id(project_id) else {
+            return Ok(());
+        };
+
+        let existing_project_id =
+            crate::modules::quota::normalize_real_project_id(account.token.project_id.as_deref());
+
+        if existing_project_id.as_deref() == Some(project_id.as_str()) {
+            return Ok(());
+        }
+
+        modules::logger::log_info(&format!(
+            "Detected project_id update ({}), saving...",
+            account.email
+        ));
+        account.token.project_id = Some(project_id);
+        upsert_account(
+            account.email.clone(),
+            account.name.clone(),
+            account.token.clone(),
+        )
+        .map_err(AppError::Account)
+    }
+
     // 1. Time-based check - ensure Token is valid first
     let token = match oauth::ensure_fresh_token(&account.token, Some(&account.id)).await {
         Ok(t) => t,
@@ -1543,20 +1571,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
 
     // Capture potentially updated project_id and save
     if let Ok((ref _q, ref project_id)) = result {
-        if project_id.is_some() && *project_id != account.token.project_id {
-            modules::logger::log_info(&format!(
-                "Detected project_id update ({}), saving...",
-                account.email
-            ));
-            account.token.project_id = project_id.clone();
-            if let Err(e) = upsert_account(
-                account.email.clone(),
-                account.name.clone(),
-                account.token.clone(),
-            ) {
-                modules::logger::log_warn(&format!("Failed to sync project_id: {}", e));
-            }
-        }
+        persist_resolved_project_id(account, project_id.as_deref())?;
     }
 
     // 3. Handle 401 error
@@ -1629,18 +1644,7 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
 
                 // Also handle project_id saving during retry
                 if let Ok((ref _q, ref project_id)) = retry_result {
-                    if project_id.is_some() && *project_id != account.token.project_id {
-                        modules::logger::log_info(&format!(
-                            "Detected update of project_id after retry ({}), saving...",
-                            account.email
-                        ));
-                        account.token.project_id = project_id.clone();
-                        let _ = upsert_account(
-                            account.email.clone(),
-                            account.name.clone(),
-                            account.token.clone(),
-                        );
-                    }
+                    persist_resolved_project_id(account, project_id.as_deref())?;
                 }
 
                 if let Err(AppError::Network(_, status)) = retry_result {

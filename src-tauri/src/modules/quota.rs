@@ -58,10 +58,87 @@ struct QuotaInfo {
     reset_time: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ResolvedCloudProject {
+    pub project_id: String,
+    pub subscription_tier: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectResolutionStage {
+    LoadCodeAssist,
+    OnboardUser,
+}
+
+impl ProjectResolutionStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LoadCodeAssist => "loadCodeAssist",
+            Self::OnboardUser => "onboardUser",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ProjectResolutionOutcome {
+    Resolved(ResolvedCloudProject),
+    InProgressExhausted {
+        subscription_tier: Option<String>,
+    },
+    TransportFailure {
+        stage: ProjectResolutionStage,
+        error: String,
+        subscription_tier: Option<String>,
+    },
+    LoadHttpFailure {
+        status: u16,
+        body_preview: String,
+        subscription_tier: Option<String>,
+    },
+    OnboardHttpFailure {
+        status: u16,
+        body_preview: String,
+        subscription_tier: Option<String>,
+    },
+    TerminalMissingProject {
+        stage: ProjectResolutionStage,
+        subscription_tier: Option<String>,
+    },
+    ParseFailure {
+        stage: ProjectResolutionStage,
+        error: String,
+        subscription_tier: Option<String>,
+    },
+}
+
+impl ProjectResolutionOutcome {
+    pub fn subscription_tier(&self) -> Option<String> {
+        match self {
+            Self::Resolved(project) => project.subscription_tier.clone(),
+            Self::InProgressExhausted { subscription_tier }
+            | Self::TransportFailure {
+                subscription_tier, ..
+            }
+            | Self::LoadHttpFailure {
+                subscription_tier, ..
+            }
+            | Self::OnboardHttpFailure {
+                subscription_tier, ..
+            }
+            | Self::TerminalMissingProject {
+                subscription_tier, ..
+            }
+            | Self::ParseFailure {
+                subscription_tier, ..
+            } => subscription_tier.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 struct LoadProjectResponse {
     #[serde(rename = "cloudaicompanionProject")]
-    project_id: Option<String>,
+    project: Option<serde_json::Value>,
     #[serde(rename = "currentTier")]
     current_tier: Option<Tier>,
     #[serde(rename = "paidTier")]
@@ -113,133 +190,101 @@ async fn create_long_standard_client(account_id: Option<&str>) -> rquest::Client
 
 const CLOUD_CODE_BASE_URL: &str = "https://cloudcode-pa.googleapis.com";
 
-/// Fetch project ID and subscription tier
-async fn fetch_project_id(
-    access_token: &str,
-    email: &str,
+pub fn normalize_real_project_id(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn persist_project_id_for_account(
     account_id: Option<&str>,
-) -> (Option<String>, Option<String>) {
-    let client = create_standard_client(account_id).await;
-    let meta = json!({"metadata": {"ideType": "ANTIGRAVITY", "platform": "PLATFORM_UNSPECIFIED", "pluginType": "GEMINI"}});
+    project_id: Option<&str>,
+) -> Result<(), String> {
+    let Some(account_id) = account_id else {
+        return Ok(());
+    };
 
-    let res = client
-        .post(format!("{}/v1internal:loadCodeAssist", CLOUD_CODE_BASE_URL))
-        .header(
-            rquest::header::AUTHORIZATION,
-            format!("Bearer {}", access_token),
-        )
-        .header(rquest::header::CONTENT_TYPE, "application/json")
-        .header(
-            rquest::header::USER_AGENT,
-            crate::constants::NATIVE_OAUTH_USER_AGENT.as_str(),
-        )
-        .header(
-            "X-Goog-Api-Client",
-            "google-cloud-sdk vscode_cloudshelleditor/0.1",
-        )
-        .header(
-            "Client-Metadata",
-            r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#,
-        )
-        .json(&meta)
-        .send()
-        .await;
+    let Some(project_id) = normalize_real_project_id(project_id) else {
+        return Ok(());
+    };
 
-    match res {
-        Ok(res) => {
-            if res.status().is_success() {
-                if let Ok(data) = res.json::<LoadProjectResponse>().await {
-                    let project_id = data.project_id.clone();
+    let mut account = crate::modules::account::load_account(account_id)?;
+    let existing_project_id = normalize_real_project_id(account.token.project_id.as_deref());
 
-                    // Go FetchProjectID (auth.go:180-195): extract default tier for onboarding
-                    let onboard_tier_id = data
-                        .allowed_tiers
-                        .as_ref()
-                        .and_then(|tiers| tiers.iter().find(|t| t.is_default == Some(true)))
-                        .and_then(|t| t.id.clone())
-                        .unwrap_or_else(|| "legacy-tier".to_string());
+    if existing_project_id.as_deref() == Some(project_id.as_str()) {
+        return Ok(());
+    }
 
-                    // Core logic: Multi-level fallback for tier extraction
-                    // 1. Paid Tier (Google One AI Premium etc.)
-                    // 2. Current Tier (If not ineligible)
-                    // 3. Allowed Tiers (Restricted/Default proxy access)
-                    let mut subscription_tier = data
-                        .paid_tier
-                        .as_ref()
-                        .and_then(|t| t.name.clone())
-                        .or_else(|| data.paid_tier.as_ref().and_then(|t| t.id.clone()));
+    account.token.project_id = Some(project_id);
+    crate::modules::account::save_account(&account)
+}
 
-                    let is_ineligible = data.ineligible_tiers.is_some()
-                        && !data.ineligible_tiers.as_ref().unwrap().is_empty();
+fn extract_project_id_from_value(value: &serde_json::Value) -> Option<String> {
+    normalize_real_project_id(value.as_str())
+        .or_else(|| normalize_real_project_id(value.get("id").and_then(|id| id.as_str())))
+}
 
-                    if subscription_tier.is_none() {
-                        if !is_ineligible {
-                            subscription_tier = data
-                                .current_tier
-                                .as_ref()
-                                .and_then(|t| t.name.clone())
-                                .or_else(|| data.current_tier.as_ref().and_then(|t| t.id.clone()));
-                        } else {
-                            // If account is marked as INELIGIBLE, drop to allowedTiers and extract default
-                            if let Some(mut allowed) = data.allowed_tiers {
-                                if let Some(default_tier) =
-                                    allowed.iter_mut().find(|t| t.is_default == Some(true))
-                                {
-                                    if let Some(name) = &default_tier.name {
-                                        subscription_tier = Some(format!("{} (Restricted)", name));
-                                    } else if let Some(id) = &default_tier.id {
-                                        subscription_tier = Some(format!("{} (Restricted)", id));
-                                    }
-                                }
-                            }
-                        }
-                    }
+fn response_preview(body: &str, max_len: usize) -> String {
+    let trimmed = body.trim();
+    if trimmed.len() > max_len {
+        trimmed[..max_len].to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
 
-                    if let Some(ref tier) = subscription_tier {
-                        crate::modules::logger::log_info(&format!(
-                            "📊 [{}] Subscription identified successfully: {}",
-                            email, tier
-                        ));
-                    }
+fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<String>) {
+    let onboard_tier_id = data
+        .allowed_tiers
+        .as_ref()
+        .and_then(|tiers| tiers.iter().find(|tier| tier.is_default == Some(true)))
+        .and_then(|tier| tier.id.clone())
+        .unwrap_or_else(|| "legacy-tier".to_string());
 
-                    let final_project_id = if project_id.is_some() {
-                        project_id
-                    } else {
-                        crate::modules::logger::log_info(&format!(
-                            "📡 [{}] No project_id from loadCodeAssist, calling onboardUser (tier: {})",
-                            email, onboard_tier_id
-                        ));
-                        call_onboard_user(access_token, &onboard_tier_id, account_id).await
-                    };
+    let mut subscription_tier = data
+        .paid_tier
+        .as_ref()
+        .and_then(|tier| tier.name.clone())
+        .or_else(|| data.paid_tier.as_ref().and_then(|tier| tier.id.clone()));
 
-                    return (final_project_id, subscription_tier);
+    let is_ineligible = data
+        .ineligible_tiers
+        .as_ref()
+        .map(|tiers| !tiers.is_empty())
+        .unwrap_or(false);
+
+    if subscription_tier.is_none() {
+        if !is_ineligible {
+            subscription_tier = data
+                .current_tier
+                .as_ref()
+                .and_then(|tier| tier.name.clone())
+                .or_else(|| data.current_tier.as_ref().and_then(|tier| tier.id.clone()));
+        } else if let Some(allowed_tiers) = data.allowed_tiers.as_ref() {
+            if let Some(default_tier) = allowed_tiers
+                .iter()
+                .find(|tier| tier.is_default == Some(true))
+            {
+                if let Some(name) = &default_tier.name {
+                    subscription_tier = Some(format!("{} (Restricted)", name));
+                } else if let Some(id) = &default_tier.id {
+                    subscription_tier = Some(format!("{} (Restricted)", id));
                 }
-            } else {
-                crate::modules::logger::log_warn(&format!(
-                    "⚠️  [{}] loadCodeAssist failed: Status: {}",
-                    email,
-                    res.status()
-                ));
             }
-        }
-        Err(e) => {
-            crate::modules::logger::log_error(&format!(
-                "❌ [{}] loadCodeAssist network error: {}",
-                email, e
-            ));
         }
     }
 
-    (None, None)
+    (onboard_tier_id, subscription_tier)
 }
 
-/// Onboard user: poll the onboardUser endpoint to provision a cloud project.
-/// Mirrors Go CLIProxyAPI OnboardUser (auth.go:245-344).
 async fn call_onboard_user(
     access_token: &str,
     tier_id: &str,
+    email: Option<&str>,
     account_id: Option<&str>,
-) -> Option<String> {
+    subscription_tier: Option<String>,
+) -> ProjectResolutionOutcome {
     let client = create_standard_client(account_id).await;
     let body = json!({
         "tierId": tier_id,
@@ -249,9 +294,8 @@ async fn call_onboard_user(
             "pluginType": "GEMINI"
         }
     });
+    let email = email.unwrap_or("unknown");
 
-    // Use production endpoint for onboarding (Go uses "https://cloudcode-pa.googleapis.com",
-    // not the sandbox/daily endpoint). Sandbox returns done=true but no project_id.
     let url = "https://cloudcode-pa.googleapis.com/v1internal:onboardUser".to_string();
     let max_attempts = 5;
 
@@ -285,72 +329,204 @@ async fn call_onboard_user(
             Ok(response) => {
                 if !response.status().is_success() {
                     let status = response.status();
-                    let text = response.text().await.unwrap_or_default();
-                    let preview = if text.len() > 200 {
-                        &text[..200]
-                    } else {
-                        &text
-                    };
+                    let body_preview =
+                        response_preview(&response.text().await.unwrap_or_default(), 200);
                     crate::modules::logger::log_warn(&format!(
-                        "⚠️ onboardUser HTTP {}: {}",
-                        status, preview
+                        "⚠️ [{}] onboardUser HTTP {}: {}",
+                        email, status, body_preview
                     ));
-                    return None;
+                    return ProjectResolutionOutcome::OnboardHttpFailure {
+                        status: status.as_u16(),
+                        body_preview,
+                        subscription_tier,
+                    };
                 }
 
-                if let Ok(data) = response.json::<serde_json::Value>().await {
-                    if data.get("done").and_then(|v| v.as_bool()) == Some(true) {
-                        // Handles both string and {id: string} formats (Go auth.go:309-316)
-                        let project_id = data
-                            .get("response")
-                            .and_then(|resp| resp.get("cloudaicompanionProject"))
-                            .and_then(|proj| {
-                                if let Some(s) = proj.as_str() {
-                                    let trimmed = s.trim().to_string();
-                                    if !trimmed.is_empty() {
-                                        return Some(trimmed);
-                                    }
-                                }
-                                proj.get("id")
-                                    .and_then(|id| id.as_str())
-                                    .map(|s| s.trim().to_string())
-                                    .filter(|s| !s.is_empty())
-                            });
+                match response.json::<serde_json::Value>().await {
+                    Ok(data) => {
+                        if data.get("done").and_then(|value| value.as_bool()) == Some(true) {
+                            let project_id = data
+                                .get("response")
+                                .and_then(|response| response.get("cloudaicompanionProject"))
+                                .and_then(extract_project_id_from_value);
 
-                        if project_id.is_some() {
-                            return project_id;
+                            if let Some(project_id) = project_id {
+                                return ProjectResolutionOutcome::Resolved(ResolvedCloudProject {
+                                    project_id,
+                                    subscription_tier,
+                                });
+                            }
+
+                            crate::modules::logger::log_warn(&format!(
+                                "⚠️ [{}] onboardUser: done=true but no project_id in response",
+                                email
+                            ));
+                            return ProjectResolutionOutcome::TerminalMissingProject {
+                                stage: ProjectResolutionStage::OnboardUser,
+                                subscription_tier,
+                            };
                         }
 
-                        crate::modules::logger::log_warn(
-                            "⚠️ onboardUser: done=true but no project_id in response",
-                        );
-                        return None;
+                        if attempt < max_attempts {
+                            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        }
                     }
-
-                    if attempt < max_attempts {
-                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    Err(error) => {
+                        crate::modules::logger::log_warn(&format!(
+                            "⚠️ [{}] onboardUser: failed to parse response JSON: {}",
+                            email, error
+                        ));
+                        return ProjectResolutionOutcome::ParseFailure {
+                            stage: ProjectResolutionStage::OnboardUser,
+                            error: error.to_string(),
+                            subscription_tier,
+                        };
                     }
-                } else {
-                    crate::modules::logger::log_warn(
-                        "⚠️ onboardUser: failed to parse response JSON",
-                    );
-                    return None;
                 }
             }
-            Err(e) => {
+            Err(error) => {
                 crate::modules::logger::log_error(&format!(
-                    "❌ onboardUser network error: {}",
-                    e
+                    "❌ [{}] onboardUser network error: {}",
+                    email, error
                 ));
-                return None;
+                return ProjectResolutionOutcome::TransportFailure {
+                    stage: ProjectResolutionStage::OnboardUser,
+                    error: error.to_string(),
+                    subscription_tier,
+                };
             }
         }
     }
 
-    crate::modules::logger::log_warn(
-        "⚠️ onboardUser: max polling attempts reached without done=true",
-    );
-    None
+    crate::modules::logger::log_warn(&format!(
+        "⚠️ [{}] onboardUser: max polling attempts reached without done=true",
+        email
+    ));
+    ProjectResolutionOutcome::InProgressExhausted { subscription_tier }
+}
+
+pub async fn resolve_project_with_contract(
+    access_token: &str,
+    email: Option<&str>,
+    account_id: Option<&str>,
+) -> ProjectResolutionOutcome {
+    let client = create_standard_client(account_id).await;
+    let meta = json!({"metadata": {"ideType": "ANTIGRAVITY", "platform": "PLATFORM_UNSPECIFIED", "pluginType": "GEMINI"}});
+    let email = email.unwrap_or("unknown");
+
+    let res = client
+        .post(format!("{}/v1internal:loadCodeAssist", CLOUD_CODE_BASE_URL))
+        .header(
+            rquest::header::AUTHORIZATION,
+            format!("Bearer {}", access_token),
+        )
+        .header(rquest::header::CONTENT_TYPE, "application/json")
+        .header(
+            rquest::header::USER_AGENT,
+            crate::constants::NATIVE_OAUTH_USER_AGENT.as_str(),
+        )
+        .header(
+            "X-Goog-Api-Client",
+            "google-cloud-sdk vscode_cloudshelleditor/0.1",
+        )
+        .header(
+            "Client-Metadata",
+            r#"{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}"#,
+        )
+        .json(&meta)
+        .send()
+        .await;
+
+    match res {
+        Ok(res) => {
+            if !res.status().is_success() {
+                let status = res.status();
+                let body_preview = response_preview(&res.text().await.unwrap_or_default(), 200);
+                crate::modules::logger::log_warn(&format!(
+                    "⚠️  [{}] loadCodeAssist failed: Status {}: {}",
+                    email, status, body_preview
+                ));
+                return ProjectResolutionOutcome::LoadHttpFailure {
+                    status: status.as_u16(),
+                    body_preview,
+                    subscription_tier: None,
+                };
+            }
+
+            match res.json::<LoadProjectResponse>().await {
+                Ok(data) => {
+                    let (onboard_tier_id, subscription_tier) = extract_project_metadata(&data);
+
+                    if let Some(ref tier) = subscription_tier {
+                        crate::modules::logger::log_info(&format!(
+                            "📊 [{}] Subscription identified successfully: {}",
+                            email, tier
+                        ));
+                    }
+
+                    if let Some(project_id) = data
+                        .project
+                        .as_ref()
+                        .and_then(extract_project_id_from_value)
+                    {
+                        return ProjectResolutionOutcome::Resolved(ResolvedCloudProject {
+                            project_id,
+                            subscription_tier,
+                        });
+                    }
+
+                    crate::modules::logger::log_info(&format!(
+                        "📡 [{}] No project_id from loadCodeAssist, calling onboardUser (tier: {})",
+                        email, onboard_tier_id
+                    ));
+                    call_onboard_user(
+                        access_token,
+                        &onboard_tier_id,
+                        Some(email),
+                        account_id,
+                        subscription_tier,
+                    )
+                    .await
+                }
+                Err(error) => {
+                    crate::modules::logger::log_warn(&format!(
+                        "⚠️ [{}] loadCodeAssist: failed to parse response JSON: {}",
+                        email, error
+                    ));
+                    ProjectResolutionOutcome::ParseFailure {
+                        stage: ProjectResolutionStage::LoadCodeAssist,
+                        error: error.to_string(),
+                        subscription_tier: None,
+                    }
+                }
+            }
+        }
+        Err(error) => {
+            crate::modules::logger::log_error(&format!(
+                "❌ [{}] loadCodeAssist network error: {}",
+                email, error
+            ));
+            ProjectResolutionOutcome::TransportFailure {
+                stage: ProjectResolutionStage::LoadCodeAssist,
+                error: error.to_string(),
+                subscription_tier: None,
+            }
+        }
+    }
+}
+
+/// Fetch project ID and subscription tier
+async fn fetch_project_id(
+    access_token: &str,
+    email: &str,
+    account_id: Option<&str>,
+) -> (Option<String>, Option<String>) {
+    match resolve_project_with_contract(access_token, Some(email), account_id).await {
+        ProjectResolutionOutcome::Resolved(project) => {
+            (Some(project.project_id), project.subscription_tier)
+        }
+        outcome => (None, outcome.subscription_tier()),
+    }
 }
 
 /// Unified entry point for fetching account quota
@@ -359,7 +535,19 @@ pub async fn fetch_quota(
     email: &str,
     account_id: Option<&str>,
 ) -> crate::error::AppResult<(QuotaData, Option<String>)> {
-    fetch_quota_with_cache(access_token, email, None, account_id).await
+    let cached_project_id = account_id.and_then(|id| {
+        crate::modules::account::load_account(id)
+            .ok()
+            .and_then(|account| normalize_real_project_id(account.token.project_id.as_deref()))
+    });
+
+    fetch_quota_with_cache(
+        access_token,
+        email,
+        cached_project_id.as_deref(),
+        account_id,
+    )
+    .await
 }
 
 /// Fetch quota with cache support
@@ -372,20 +560,30 @@ pub async fn fetch_quota_with_cache(
     use crate::error::AppError;
 
     // Optimization: Skip loadCodeAssist call if project_id is cached to save API quota
+    let cached_project_id = normalize_real_project_id(cached_project_id);
     let (project_id, subscription_tier) = if let Some(pid) = cached_project_id {
-        (Some(pid.to_string()), None)
+        (Some(pid), None)
     } else {
         fetch_project_id(access_token, email, account_id).await
     };
 
-    // We keep project_id to store in the DB, but we NO LONGER force inject it into payload if it's absent
+    let project_id = normalize_real_project_id(project_id.as_deref());
+
+    let resolved_project_id = project_id.clone().ok_or_else(|| {
+        AppError::Account(match subscription_tier.as_deref() {
+            Some(tier) => format!(
+                "Missing real project_id for {} after fresh project resolution attempt; retaining any previously stored value unchanged (subscription tier: {})",
+                email, tier
+            ),
+            None => format!(
+                "Missing real project_id for {} after fresh project resolution attempt; retaining any previously stored value unchanged",
+                email
+            ),
+        })
+    })?;
 
     let client = create_standard_client(account_id).await;
-    let payload = if let Some(ref pid) = project_id {
-        json!({ "project": pid })
-    } else {
-        json!({}) // Empty payload fallback
-    };
+    let payload = json!({ "project": resolved_project_id });
 
     let mut last_error: Option<AppError> = None;
 
@@ -502,6 +700,9 @@ pub async fn fetch_quota_with_cache(
                 // Set subscription tier
                 quota_data.subscription_tier = subscription_tier.clone();
 
+                persist_project_id_for_account(account_id, project_id.as_deref())
+                    .map_err(AppError::Account)?;
+
                 return Ok((quota_data, project_id.clone()));
             }
             Err(e) => {
@@ -577,7 +778,12 @@ pub async fn get_valid_token_for_warmup(
         Some(&account.id),
     )
     .await;
-    let final_pid = project_id.unwrap_or_else(|| "bamboo-precept-lgxtn".to_string());
+    let final_pid = project_id.ok_or_else(|| {
+        format!(
+            "[Warmup] Missing project_id after shared project resolution for {}",
+            account.email
+        )
+    })?;
 
     Ok((account.token.access_token, final_pid))
 }

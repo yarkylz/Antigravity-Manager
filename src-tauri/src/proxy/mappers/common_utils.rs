@@ -361,12 +361,15 @@ pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
         if let Some(tools_arr) = tools_entry.as_array_mut() {
             // [安全校验] Gemini v1internal 对混合工具有严格要求。
             // 只有 Gemini 2.0+ 及 3.0 系列模型确认支持混合工具 (Function Calling + Google Search)。
+            // Gemini 3.1+ 需要 includeServerSideToolInvocations 字段才能混合工具，
+            // 但 v1internal 不支持该字段，因此 3.1+ 排除在外。
             let mut supports_mixed_tools = false;
             if let Some(model) = mapped_model {
                 let model_lower = model.to_lowercase();
                 supports_mixed_tools = model_lower.contains("gemini-2.0")
                     || model_lower.contains("gemini-2.5")
-                    || model_lower.contains("gemini-3");
+                    || (model_lower.contains("gemini-3")
+                        && !model_lower.contains("gemini-3.1"));
             }
 
             let has_functions = tools_arr.iter().any(|t| {
@@ -394,13 +397,6 @@ pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
             tools_arr.push(json!({
                 "googleSearch": {}
             }));
-        }
-
-        // [FIX] Gemini 3.1+ requires includeServerSideToolInvocations when mixing
-        // built-in tools (googleSearch) with function calling declarations.
-        let tool_config = obj.entry("toolConfig").or_insert_with(|| json!({}));
-        if let Some(tc) = tool_config.as_object_mut() {
-            tc.insert("includeServerSideToolInvocations".to_string(), json!(true));
         }
     }
 }

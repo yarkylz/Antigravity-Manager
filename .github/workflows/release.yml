@@ -281,6 +281,23 @@ jobs:
           echo "Generated updater.json:"
           cat updater.json
 
+      - name: Delete old release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.resolve-tag.outputs.release_tag }}
+        run: |
+          echo "Deleting old assets from release ${RELEASE_TAG}..."
+          asset_ids=$(gh api "repos/${{ github.repository }}/releases/tags/${RELEASE_TAG}" --jq '.assets[].id' 2>/dev/null || true)
+          if [ -n "$asset_ids" ]; then
+            for id in $asset_ids; do
+              echo "Deleting asset ID: $id"
+              gh api -X DELETE "repos/${{ github.repository }}/releases/assets/$id" 2>/dev/null || true
+            done
+            echo "Deleted all old assets"
+          else
+            echo "No existing assets to delete"
+          fi
+
       - name: Create or Update GitHub Release
         uses: ncipollo/release-action@v1
         with:

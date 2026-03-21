@@ -395,6 +395,13 @@ pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
                 "googleSearch": {}
             }));
         }
+
+        // [FIX] Gemini 3.1+ requires includeServerSideToolInvocations when mixing
+        // built-in tools (googleSearch) with function calling declarations.
+        let tool_config = obj.entry("toolConfig").or_insert_with(|| json!({}));
+        if let Some(tc) = tool_config.as_object_mut() {
+            tc.insert("includeServerSideToolInvocations".to_string(), json!(true));
+        }
     }
 }
 

@@ -972,33 +972,19 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
             stage,
             subscription_tier,
         } => {
-            let (message, status) = match stage {
-                modules::quota::ProjectResolutionStage::LoadCodeAssist => (
-                    "Project resolution completed without a real project ID from loadCodeAssist",
-                    "project_resolution_failed",
-                ),
-                modules::quota::ProjectResolutionStage::OnboardUser => (
-                    "Project resolution completed without a real project ID after onboarding",
-                    "project_missing_after_done",
-                ),
-            };
-
-            return Ok(OnboardingResult {
-                success: false,
-                message: message.to_string(),
-                status: Some(status.to_string()),
-                details: Some(match subscription_tier {
-                    Some(tier) => format!(
-                        "{} returned a terminal response without a project_id; subscription tier: {}",
-                        stage.as_str(),
-                        tier
-                    ),
-                    None => format!(
-                        "{} returned a terminal response without a project_id",
-                        stage.as_str()
-                    ),
-                }),
-            });
+            // Google accepted the request (done=true) but didn't return a project_id.
+            // Use a random fallback — project_id is just a routing hint, auth is via Bearer token.
+            let fallback = modules::quota::generate_fallback_project_id();
+            modules::logger::log_warn(&format!(
+                "[Onboarding] {} completed without project_id for {}, using fallback: {}",
+                stage.as_str(),
+                account.email,
+                fallback
+            ));
+            modules::quota::ResolvedCloudProject {
+                project_id: fallback,
+                subscription_tier,
+            }
         }
         modules::quota::ProjectResolutionOutcome::TransportFailure {
             stage,

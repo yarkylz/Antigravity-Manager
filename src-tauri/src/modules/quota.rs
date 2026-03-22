@@ -199,7 +199,7 @@ pub fn normalize_real_project_id(value: Option<&str>) -> Option<String> {
 
 /// Generate a random fallback project ID when real resolution fails.
 /// Format matches CLIProxyAPI style: "adj-noun-hex5" (e.g. "swift-flow-d4e1a").
-fn generate_fallback_project_id() -> String {
+pub fn generate_fallback_project_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const ADJECTIVES: &[&str] = &[
@@ -586,7 +586,14 @@ pub async fn fetch_quota_with_cache(
     // Optimization: Skip loadCodeAssist call if project_id is cached to save API quota
     let cached_project_id = normalize_real_project_id(cached_project_id);
     let (project_id, subscription_tier) = if let Some(pid) = cached_project_id {
-        (Some(pid), None)
+        // Also pull cached subscription_tier so it doesn't become None/Unknown
+        let cached_tier = account_id.and_then(|id| {
+            crate::modules::account::load_account(id)
+                .ok()
+                .and_then(|acc| acc.quota)
+                .and_then(|q| q.subscription_tier)
+        });
+        (Some(pid), cached_tier)
     } else {
         fetch_project_id(access_token, email, account_id).await
     };

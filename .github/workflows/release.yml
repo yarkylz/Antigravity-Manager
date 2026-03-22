@@ -127,7 +127,7 @@ jobs:
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path "src-tauri/target/release" -Filter "Antigravity Tools.exe" -ErrorAction SilentlyContinue
+          $exe = Get-ChildItem -Path "src-tauri/target/release" -Filter "antigravity_tools.exe" -ErrorAction SilentlyContinue
           if ($exe) {
             $dest = "src-tauri/target/release/bundle/standalone"
             New-Item -ItemType Directory -Force -Path $dest | Out-Null
@@ -135,6 +135,8 @@ jobs:
             Write-Host "Copied standalone exe: antigravity_tools.exe"
           } else {
             Write-Host "WARNING: Standalone exe not found in target/release"
+            Write-Host "Available exe files:"
+            Get-ChildItem -Path "src-tauri/target/release" -Filter "*.exe" | ForEach-Object { Write-Host "  $_" }
           }
 
       - name: Upload updater json

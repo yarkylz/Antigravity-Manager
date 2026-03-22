@@ -202,8 +202,12 @@ pub fn normalize_real_project_id(value: Option<&str>) -> Option<String> {
 fn generate_fallback_project_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    const ADJECTIVES: &[&str] = &["useful", "bright", "swift", "calm", "bold", "keen", "warm", "pure"];
-    const NOUNS: &[&str] = &["fuze", "wave", "spark", "flow", "core", "node", "link", "beam"];
+    const ADJECTIVES: &[&str] = &[
+        "useful", "bright", "swift", "calm", "bold", "keen", "warm", "pure",
+    ];
+    const NOUNS: &[&str] = &[
+        "fuze", "wave", "spark", "flow", "core", "node", "link", "beam",
+    ];
 
     let seed = SystemTime::now()
         .duration_since(UNIX_EPOCH)

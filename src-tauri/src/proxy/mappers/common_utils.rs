@@ -368,8 +368,7 @@ pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
                 let model_lower = model.to_lowercase();
                 supports_mixed_tools = model_lower.contains("gemini-2.0")
                     || model_lower.contains("gemini-2.5")
-                    || (model_lower.contains("gemini-3")
-                        && !model_lower.contains("gemini-3.1"));
+                    || (model_lower.contains("gemini-3") && !model_lower.contains("gemini-3.1"));
             }
 
             let has_functions = tools_arr.iter().any(|t| {

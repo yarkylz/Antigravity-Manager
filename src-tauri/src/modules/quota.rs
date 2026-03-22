@@ -62,6 +62,7 @@ struct QuotaInfo {
 pub struct ResolvedCloudProject {
     pub project_id: String,
     pub subscription_tier: Option<String>,
+    pub restriction_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,30 +85,36 @@ pub enum ProjectResolutionOutcome {
     Resolved(ResolvedCloudProject),
     InProgressExhausted {
         subscription_tier: Option<String>,
+        restriction_reason: Option<String>,
     },
     TransportFailure {
         stage: ProjectResolutionStage,
         error: String,
         subscription_tier: Option<String>,
+        restriction_reason: Option<String>,
     },
     LoadHttpFailure {
         status: u16,
         body_preview: String,
         subscription_tier: Option<String>,
+        restriction_reason: Option<String>,
     },
     OnboardHttpFailure {
         status: u16,
         body_preview: String,
         subscription_tier: Option<String>,
+        restriction_reason: Option<String>,
     },
     TerminalMissingProject {
         stage: ProjectResolutionStage,
         subscription_tier: Option<String>,
+        restriction_reason: Option<String>,
     },
     ParseFailure {
         stage: ProjectResolutionStage,
         error: String,
         subscription_tier: Option<String>,
+        restriction_reason: Option<String>,
     },
 }
 
@@ -115,7 +122,7 @@ impl ProjectResolutionOutcome {
     pub fn subscription_tier(&self) -> Option<String> {
         match self {
             Self::Resolved(project) => project.subscription_tier.clone(),
-            Self::InProgressExhausted { subscription_tier }
+            Self::InProgressExhausted { subscription_tier, .. }
             | Self::TransportFailure {
                 subscription_tier, ..
             }
@@ -131,6 +138,28 @@ impl ProjectResolutionOutcome {
             | Self::ParseFailure {
                 subscription_tier, ..
             } => subscription_tier.clone(),
+        }
+    }
+
+    pub fn restriction_reason(&self) -> Option<String> {
+        match self {
+            Self::Resolved(project) => project.restriction_reason.clone(),
+            Self::InProgressExhausted { restriction_reason, .. }
+            | Self::TransportFailure {
+                restriction_reason, ..
+            }
+            | Self::LoadHttpFailure {
+                restriction_reason, ..
+            }
+            | Self::OnboardHttpFailure {
+                restriction_reason, ..
+            }
+            | Self::TerminalMissingProject {
+                restriction_reason, ..
+            }
+            | Self::ParseFailure {
+                restriction_reason, ..
+            } => restriction_reason.clone(),
         }
     }
 }
@@ -151,14 +180,15 @@ struct LoadProjectResponse {
 
 #[derive(Debug, Deserialize)]
 struct IneligibleTier {
-    #[allow(dead_code)]
     #[serde(rename = "reasonCode")]
     reason_code: Option<String>,
+    #[serde(rename = "reasonMessage")]
+    reason_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct Tier {
-    #[allow(dead_code)]
+    #[serde(rename = "isDefault")]
     is_default: Option<bool>,
     id: Option<String>,
     #[allow(dead_code)]
@@ -258,7 +288,7 @@ fn response_preview(body: &str, max_len: usize) -> String {
     }
 }
 
-fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<String>) {
+fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<String>, Option<String>) {
     let onboard_tier_id = data
         .allowed_tiers
         .as_ref()
@@ -277,6 +307,21 @@ fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<Strin
         .as_ref()
         .map(|tiers| !tiers.is_empty())
         .unwrap_or(false);
+
+    // Extract restriction reason from first ineligible tier
+    let restriction_reason = if is_ineligible {
+        data.ineligible_tiers
+            .as_ref()
+            .and_then(|tiers| tiers.first())
+            .and_then(|tier| {
+                // Prefer reasonMessage, fall back to reasonCode
+                tier.reason_message
+                    .clone()
+                    .or_else(|| tier.reason_code.clone())
+            })
+    } else {
+        None
+    };
 
     if subscription_tier.is_none() {
         if !is_ineligible {
@@ -299,7 +344,7 @@ fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<Strin
         }
     }
 
-    (onboard_tier_id, subscription_tier)
+    (onboard_tier_id, subscription_tier, restriction_reason)
 }
 
 async fn call_onboard_user(
@@ -308,6 +353,7 @@ async fn call_onboard_user(
     email: Option<&str>,
     account_id: Option<&str>,
     subscription_tier: Option<String>,
+    restriction_reason: Option<String>,
 ) -> ProjectResolutionOutcome {
     let client = create_standard_client(account_id).await;
     let body = json!({
@@ -363,6 +409,7 @@ async fn call_onboard_user(
                         status: status.as_u16(),
                         body_preview,
                         subscription_tier,
+                        restriction_reason,
                     };
                 }
 
@@ -378,6 +425,7 @@ async fn call_onboard_user(
                                 return ProjectResolutionOutcome::Resolved(ResolvedCloudProject {
                                     project_id,
                                     subscription_tier,
+                                    restriction_reason,
                                 });
                             }
 
@@ -388,6 +436,7 @@ async fn call_onboard_user(
                             return ProjectResolutionOutcome::TerminalMissingProject {
                                 stage: ProjectResolutionStage::OnboardUser,
                                 subscription_tier,
+                                restriction_reason,
                             };
                         }
 
@@ -404,6 +453,7 @@ async fn call_onboard_user(
                             stage: ProjectResolutionStage::OnboardUser,
                             error: error.to_string(),
                             subscription_tier,
+                            restriction_reason,
                         };
                     }
                 }
@@ -417,6 +467,7 @@ async fn call_onboard_user(
                     stage: ProjectResolutionStage::OnboardUser,
                     error: error.to_string(),
                     subscription_tier,
+                    restriction_reason,
                 };
             }
         }
@@ -426,7 +477,7 @@ async fn call_onboard_user(
         "⚠️ [{}] onboardUser: max polling attempts reached without done=true",
         email
     ));
-    ProjectResolutionOutcome::InProgressExhausted { subscription_tier }
+    ProjectResolutionOutcome::InProgressExhausted { subscription_tier, restriction_reason }
 }
 
 pub async fn resolve_project_with_contract(
@@ -474,6 +525,7 @@ pub async fn resolve_project_with_contract(
                     status: status.as_u16(),
                     body_preview,
                     subscription_tier: None,
+                    restriction_reason: None,
                 };
             }
 
@@ -512,11 +564,12 @@ pub async fn resolve_project_with_contract(
                                 stage: ProjectResolutionStage::LoadCodeAssist,
                                 error: error.to_string(),
                                 subscription_tier: None,
+                                restriction_reason: None,
                             };
                         }
                     };
 
-                    let (onboard_tier_id, subscription_tier) = extract_project_metadata(&data);
+                    let (onboard_tier_id, subscription_tier, restriction_reason) = extract_project_metadata(&data);
 
                     if let Some(ref tier) = subscription_tier {
                         crate::modules::logger::log_info(&format!(
@@ -530,6 +583,13 @@ pub async fn resolve_project_with_contract(
                         ));
                     }
 
+                    if let Some(ref reason) = restriction_reason {
+                        crate::modules::logger::log_info(&format!(
+                            "🚫 [{}] Account restricted: {}",
+                            email, reason
+                        ));
+                    }
+
                     if let Some(project_id) = data
                         .project
                         .as_ref()
@@ -538,6 +598,7 @@ pub async fn resolve_project_with_contract(
                         return ProjectResolutionOutcome::Resolved(ResolvedCloudProject {
                             project_id,
                             subscription_tier,
+                            restriction_reason,
                         });
                     }
 
@@ -551,6 +612,7 @@ pub async fn resolve_project_with_contract(
                         Some(email),
                         account_id,
                         subscription_tier,
+                        restriction_reason,
                     )
                     .await
                 }
@@ -563,6 +625,7 @@ pub async fn resolve_project_with_contract(
                         stage: ProjectResolutionStage::LoadCodeAssist,
                         error: error.to_string(),
                         subscription_tier: None,
+                        restriction_reason: None,
                     }
                 }
             }
@@ -576,6 +639,7 @@ pub async fn resolve_project_with_contract(
                 stage: ProjectResolutionStage::LoadCodeAssist,
                 error: error.to_string(),
                 subscription_tier: None,
+                restriction_reason: None,
             }
         }
     }
@@ -586,12 +650,12 @@ async fn fetch_project_id(
     access_token: &str,
     email: &str,
     account_id: Option<&str>,
-) -> (Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, Option<String>) {
     match resolve_project_with_contract(access_token, Some(email), account_id).await {
         ProjectResolutionOutcome::Resolved(project) => {
-            (Some(project.project_id), project.subscription_tier)
+            (Some(project.project_id), project.subscription_tier, project.restriction_reason)
         }
-        outcome => (None, outcome.subscription_tier()),
+        outcome => (None, outcome.subscription_tier(), outcome.restriction_reason()),
     }
 }
 
@@ -627,15 +691,17 @@ pub async fn fetch_quota_with_cache(
 
     // Optimization: Skip loadCodeAssist call if project_id is cached to save API quota
     let cached_project_id = normalize_real_project_id(cached_project_id);
-    let (project_id, subscription_tier) = if let Some(pid) = cached_project_id {
-        // Also pull cached subscription_tier so it doesn't become None/Unknown
-        let cached_tier = account_id.and_then(|id| {
-            crate::modules::account::load_account(id)
-                .ok()
-                .and_then(|acc| acc.quota)
-                .and_then(|q| q.subscription_tier)
-        });
-        (Some(pid), cached_tier)
+    let (project_id, subscription_tier, restriction_reason) = if let Some(pid) = cached_project_id {
+        // Also pull cached subscription_tier and restriction_reason so they don't become None/Unknown
+        let (cached_tier, cached_reason) = account_id
+            .and_then(|id| {
+                crate::modules::account::load_account(id)
+                    .ok()
+                    .and_then(|acc| acc.quota)
+            })
+            .map(|q| (q.subscription_tier, q.restriction_reason))
+            .unwrap_or((None, None));
+        (Some(pid), cached_tier, cached_reason)
     } else {
         fetch_project_id(access_token, email, account_id).await
     };
@@ -687,6 +753,7 @@ pub async fn fetch_quota_with_cache(
                         let mut q = QuotaData::new();
                         q.is_forbidden = true;
                         q.subscription_tier = subscription_tier.clone();
+                        q.restriction_reason = restriction_reason.clone();
                         return Ok((q, project_id.clone()));
                     }
 
@@ -772,6 +839,7 @@ pub async fn fetch_quota_with_cache(
 
                 // Set subscription tier
                 quota_data.subscription_tier = subscription_tier.clone();
+                quota_data.restriction_reason = restriction_reason.clone();
 
                 persist_project_id_for_account(account_id, project_id.as_deref())
                     .map_err(AppError::Account)?;

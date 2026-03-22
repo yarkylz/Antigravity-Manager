@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Database, Globe, FileClock, Loader2, CheckCircle2, XCircle, Copy, Check, Info, Link2 } from 'lucide-react';
+import { Plus, Database, Globe, FileClock, Loader2, CheckCircle2, XCircle, Copy, Check, Info, Link2, Tag, ChevronDown, AlertTriangle } from 'lucide-react';
 import { useAccountStore } from '../../stores/useAccountStore';
+import { useConfigStore } from '../../stores/useConfigStore';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import { open } from '@tauri-apps/plugin-dialog';
@@ -10,7 +11,7 @@ import { isTauri } from '../../utils/env';
 import { copyToClipboard } from '../../utils/clipboard';
 
 interface AddAccountDialogProps {
-    onAdd: (email: string, refreshToken: string) => Promise<void>;
+    onAdd: (email: string, refreshToken: string, customLabel?: string, proxyId?: string) => Promise<void>;
     showText?: boolean;
 }
 
@@ -19,9 +20,12 @@ type Status = 'idle' | 'loading' | 'success' | 'error';
 function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
     const { t } = useTranslation();
     const fetchAccounts = useAccountStore(state => state.fetchAccounts);
+    const { config } = useConfigStore();
     const [isOpen, setIsOpen] = useState(false);
     const [activeTab, setActiveTab] = useState<'oauth' | 'token' | 'import'>(isTauri() ? 'oauth' : 'token');
     const [refreshToken, setRefreshToken] = useState('');
+    const [customLabel, setCustomLabel] = useState('');
+    const [selectedProxyId, setSelectedProxyId] = useState('');
     const [oauthUrl, setOauthUrl] = useState('');
     const [oauthUrlCopied, setOauthUrlCopied] = useState(false);
     const [manualCode, setManualCode] = useState('');
@@ -44,12 +48,12 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
         isOpenRef.current = isOpen;
     }, [oauthUrl, status, activeTab, isOpen]);
 
-    // Reset state when dialog opens or tab changes
+    // Reset state when dialog opens
     useEffect(() => {
         if (isOpen) {
             resetState();
         }
-    }, [isOpen, activeTab]);
+    }, [isOpen]);
 
     // Listen for OAuth URL
     useEffect(() => {
@@ -146,6 +150,8 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
         setStatus('idle');
         setMessage('');
         setRefreshToken('');
+        setCustomLabel('');
+        setSelectedProxyId('');
         setOauthUrl('');
         setOauthUrlCopied(false);
     };
@@ -244,7 +250,10 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
             setMessage(t('accounts.add.token.batch_progress', { current: i + 1, total: tokens.length }));
 
             try {
-                await onAdd("", currentToken);
+                await onAdd("", currentToken, 
+                    tokens.length === 1 ? (customLabel.trim() || undefined) : undefined,
+                    tokens.length === 1 ? (selectedProxyId || undefined) : undefined
+                );
                 successCount++;
             } catch (error) {
                 console.error(`Failed to add token ${i + 1}:`, error);
@@ -634,6 +643,59 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                                             {t('accounts.add.token.hint')}
                                         </p>
                                     </div>
+
+                                    {/* Optional: Tag + Proxy */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        {/* Custom Label / Tag */}
+                                        <div>
+                                            <label htmlFor="add-account-tag" className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                                                <Tag className="w-3 h-3" />
+                                                Tag
+                                            </label>
+                                            <input
+                                                id="add-account-tag"
+                                                type="text"
+                                                className="w-full text-xs py-2 px-3 bg-white dark:bg-base-100 border border-gray-200 dark:border-base-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-300 dark:placeholder:text-gray-600"
+                                                placeholder="e.g. Main, Work..."
+                                                value={customLabel}
+                                                onChange={(e) => setCustomLabel(e.target.value)}
+                                                maxLength={15}
+                                                disabled={status === 'loading' || status === 'success'}
+                                            />
+                                        </div>
+
+                                        {/* Proxy Selector */}
+                                        <div>
+                                            <label htmlFor="add-account-proxy" className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                                                <Globe className="w-3 h-3" />
+                                                Proxy
+                                            </label>
+                                            <div className="relative">
+                                                <select
+                                                    id="add-account-proxy"
+                                                    className="w-full text-xs py-2 px-3 bg-white dark:bg-base-100 border border-gray-200 dark:border-base-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none pr-7 text-gray-700 dark:text-gray-300"
+                                                    value={selectedProxyId}
+                                                    onChange={(e) => setSelectedProxyId(e.target.value)}
+                                                    disabled={status === 'loading' || status === 'success' || !config?.proxy?.proxy_pool?.proxies?.length}
+                                                >
+                                                    <option value="">None</option>
+                                                    {config?.proxy?.proxy_pool?.proxies?.filter((p) => p.enabled !== false).map((p) => (
+                                                        <option key={p.id} value={p.id}>
+                                                            {p.name || p.id}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {/* Hint: tag/proxy only apply to single-token adds */}
+                                    {(customLabel.trim() || selectedProxyId) && refreshToken.includes('\n') && (
+                                        <p className="text-[10px] text-amber-500 dark:text-amber-400 flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3 shrink-0" />
+                                            Tag and Proxy only apply when adding a single token.
+                                        </p>
+                                    )}
                                 </div>
                             )}
 

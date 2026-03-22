@@ -24,8 +24,8 @@ export async function getCurrentAccount(): Promise<Account | null> {
     return await invoke('get_current_account');
 }
 
-export async function addAccount(email: string, refreshToken: string): Promise<Account> {
-    return await invoke('add_account', { email, refreshToken });
+export async function addAccount(email: string, refreshToken: string, customLabel?: string, proxyId?: string): Promise<Account> {
+    return await invoke('add_account', { email, refreshToken, customLabel, proxyId });
 }
 
 export async function deleteAccount(accountId: string): Promise<void> {

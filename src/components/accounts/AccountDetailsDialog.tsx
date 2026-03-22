@@ -1,9 +1,10 @@
-import { X, Clock, AlertCircle, Bot } from 'lucide-react';
+import { X, Clock, AlertCircle, Bot, AlertTriangle, Globe } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { Account } from '../../types/account';
 import { formatDate } from '../../utils/format';
 import { useTranslation } from 'react-i18next';
 import { MODEL_CONFIG, sortModels } from '../../config/modelConfig';
+import { useConfigStore } from '../../stores/useConfigStore';
 
 interface AccountDetailsDialogProps {
     account: Account | null;
@@ -12,6 +13,7 @@ interface AccountDetailsDialogProps {
 
 export default function AccountDetailsDialog({ account, onClose }: AccountDetailsDialogProps) {
     const { t } = useTranslation();
+    const { config } = useConfigStore();
     if (!account) return null;
 
     return createPortal(
@@ -27,13 +29,34 @@ export default function AccountDetailsDialog({ account, onClose }: AccountDetail
                         <div className="px-2.5 py-0.5 rounded-full bg-gray-100 dark:bg-base-200 border border-gray-200 dark:border-base-300 text-xs font-mono text-gray-500 dark:text-gray-400">
                             {account.email}
                         </div>
-                        {account.quota?.subscription_tier && (
+                        {account.quota?.restriction_reason ? (
+                            <>
+                                <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 text-white flex items-center gap-1" title={account.quota.restriction_reason}>
+                                    <AlertTriangle className="w-3 h-3" />
+                                    RESTRICTED
+                                </div>
+                            </>
+                        ) : account.quota?.subscription_tier && (
                             <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${account.quota.subscription_tier === 'ultra' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
                                 account.quota.subscription_tier === 'pro' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-600 dark:bg-base-300 dark:text-gray-400'
                                 }`}>
                                 {account.quota.subscription_tier}
                             </div>
                         )}
+                        {account.proxy_id && (() => {
+                            const proxy = config?.proxy?.proxy_pool?.proxies?.find((p) => p.id === account.proxy_id);
+                            return proxy ? (
+                                <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 flex items-center gap-1" title={proxy.url}>
+                                    <Globe className="w-3 h-3" />
+                                    {proxy.name || proxy.id}
+                                </div>
+                            ) : (
+                                <div className="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center gap-1" title={`Proxy ${account.proxy_id} not found`}>
+                                    <Globe className="w-3 h-3" />
+                                    ???
+                                </div>
+                            );
+                        })()}
                     </div>
                     <button
                         onClick={onClose}
@@ -42,6 +65,17 @@ export default function AccountDetailsDialog({ account, onClose }: AccountDetail
                         <X size={18} />
                     </button>
                 </div>
+
+                {/* Restriction Reason Alert */}
+                {account.quota?.restriction_reason && (
+                    <div className="px-6 py-3 bg-amber-50 dark:bg-amber-950/20 border-b border-amber-100 dark:border-amber-900/30 flex items-center gap-2">
+                        <AlertTriangle size={14} className="text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span className="text-xs text-amber-700 dark:text-amber-400">
+                            <span className="font-semibold">Restriction Reason:</span>{' '}
+                            {account.quota.restriction_reason}
+                        </span>
+                    </div>
+                )}
 
                 {/* Status Alerts */}
                 {(account.disabled || account.proxy_disabled) && (

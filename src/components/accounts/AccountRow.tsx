@@ -1,8 +1,9 @@
-import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, Clock, ToggleLeft, ToggleRight, Fingerprint } from 'lucide-react';
+import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, Clock, ToggleLeft, ToggleRight, Fingerprint, AlertTriangle, Globe } from 'lucide-react';
 import { Account } from '../../types/account';
 import { getQuotaColor, formatTimeRemaining, getTimeRemainingColor } from '../../utils/format';
 import { cn } from '../../utils/cn';
 import { useTranslation } from 'react-i18next';
+import { useConfigStore } from '../../stores/useConfigStore';
 
 interface AccountRowProps {
     account: Account;
@@ -24,6 +25,7 @@ interface AccountRowProps {
 
 function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSwitching = false, onSwitch, onRefresh, onViewDetails, onExport, onDelete, onToggleProxy, onViewDevice }: AccountRowProps) {
     const { t } = useTranslation();
+    const { config } = useConfigStore();
     // [重构] 按组聚合查找逻辑，优先显示组内配额最低的型号以与锁定状态（🔒）对齐
     const geminiProModel = account.quota?.models
         .filter(m =>
@@ -129,7 +131,15 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                         )}
 
                         {/* 订阅类型徽章 */}
-                        {account.quota?.subscription_tier && (() => {
+                        {account.quota?.restriction_reason ? (
+                            <span
+                                className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold shadow-sm cursor-default"
+                                title={account.quota.restriction_reason}
+                            >
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                RESTRICTED
+                            </span>
+                        ) : account.quota?.subscription_tier && (() => {
                             const tier = account.quota.subscription_tier.toLowerCase();
                             if (tier.includes('ultra')) {
                                 return (
@@ -153,6 +163,21 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                                     </span>
                                 );
                             }
+                        })()}
+                        {/* 绑定代理 */}
+                        {account.proxy_id && (() => {
+                            const proxy = config?.proxy?.proxy_pool?.proxies?.find((p) => p.id === account.proxy_id);
+                            return proxy ? (
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[10px] font-bold shadow-sm border border-teal-200/50 dark:border-teal-800/50" title={proxy.url}>
+                                    <Globe className="w-2.5 h-2.5" />
+                                    {proxy.name || proxy.id}
+                                </span>
+                            ) : (
+                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] font-bold shadow-sm border border-red-200/50 dark:border-red-800/50" title={`Proxy ${account.proxy_id} not found`}>
+                                    <Globe className="w-2.5 h-2.5" />
+                                    ???
+                                </span>
+                            );
                         })()}
                     </div>
                 </div>

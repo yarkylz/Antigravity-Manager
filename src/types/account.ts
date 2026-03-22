@@ -14,6 +14,8 @@ export interface Account {
     proxy_disabled_at?: number;
     protected_models?: string[];
     custom_label?: string;  // 用户自定义标签
+    proxy_id?: string;  // 绑定的代理ID
+    proxy_bound_at?: number;  // 代理绑定时间
     validation_blocked?: boolean;
     validation_blocked_until?: number;
     validation_blocked_reason?: string;
@@ -37,6 +39,7 @@ export interface QuotaData {
     is_forbidden?: boolean;
     forbidden_reason?: string;
     subscription_tier?: string;  // 订阅类型: FREE/PRO/ULTRA
+    restriction_reason?: string;  // 账号受限原因 (来自 ineligibleTiers)
     model_forwarding_rules?: Record<string, string>; // 废弃模型转发表
 }
 

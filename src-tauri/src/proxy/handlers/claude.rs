@@ -2049,7 +2049,24 @@ async fn call_gemini_sync(
 
     debug!("[{}] Calling Gemini API: {}", trace_id, model);
 
-    let response = reqwest::Client::new()
+    // Build proxy-aware client using upstream proxy config (fixes proxy bypass bug)
+    let client = {
+        let mut builder = reqwest::Client::builder()
+            .timeout(Duration::from_secs(120));
+        if let Ok(app_cfg) = crate::modules::config::load_app_config() {
+            let up = app_cfg.proxy.upstream_proxy;
+            if up.enabled && !up.url.is_empty() {
+                let url = crate::proxy::config::normalize_proxy_url(&up.url);
+                if let Ok(proxy) = reqwest::Proxy::all(&url) {
+                    builder = builder.proxy(proxy);
+                    debug!("[{}] Gemini call using upstream proxy: {}", trace_id, url);
+                }
+            }
+        }
+        builder.build().unwrap_or_else(|_| reqwest::Client::new())
+    };
+
+    let response = client
         .post(&upstream_url)
         .header("Authorization", format!("Bearer {}", access_token))
         .header("Content-Type", "application/json")

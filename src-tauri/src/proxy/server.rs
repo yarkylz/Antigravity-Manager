@@ -979,13 +979,15 @@ async fn admin_get_current_account(
 #[serde(rename_all = "camelCase")]
 struct AddAccountRequest {
     refresh_token: String,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
 }
 
 async fn admin_add_account(
     State(state): State<AppState>,
     Json(payload): Json<AddAccountRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let account = state
+    let mut account = state
         .account_service
         .add_account(&payload.refresh_token)
         .await
@@ -995,6 +997,90 @@ async fn admin_add_account(
                 Json(ErrorResponse { error: e }),
             )
         })?;
+
+    // Apply custom label if provided
+    if let Some(ref label) = payload.custom_label {
+        let label = label.trim().to_string();
+        if !label.is_empty() {
+            let truncated: String = label.chars().take(15).collect();
+            account.custom_label = Some(truncated.clone());
+
+            // Persist to account JSON file
+            let data_dir = crate::modules::account::get_data_dir().map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: e }),
+                )
+            })?;
+            let account_path = data_dir
+                .join("accounts")
+                .join(format!("{}.json", account.id));
+            if account_path.exists() {
+                if let Ok(content) = std::fs::read_to_string(&account_path) {
+                    if let Ok(mut account_json) =
+                        serde_json::from_str::<serde_json::Value>(&content)
+                    {
+                        account_json["custom_label"] =
+                            serde_json::Value::String(truncated);
+                        if let Ok(json_str) = serde_json::to_string_pretty(&account_json) {
+                            let _ = std::fs::write(&account_path, json_str);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Bind proxy if provided
+    if let Some(ref pid) = payload.proxy_id {
+        if !pid.is_empty() {
+            match state
+                .proxy_pool_manager
+                .bind_account_to_proxy(account.id.clone(), pid.clone())
+                .await
+            {
+                Ok(_) => {
+                    account.proxy_id = Some(pid.clone());
+                    account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
+
+                    // Persist proxy_id and proxy_bound_at to account JSON file
+                    let data_dir =
+                        crate::modules::account::get_data_dir().map_err(|e| {
+                            (
+                                StatusCode::INTERNAL_SERVER_ERROR,
+                                Json(ErrorResponse { error: e }),
+                            )
+                        })?;
+                    let account_path = data_dir
+                        .join("accounts")
+                        .join(format!("{}.json", account.id));
+                    if account_path.exists() {
+                        if let Ok(content) = std::fs::read_to_string(&account_path) {
+                            if let Ok(mut account_json) =
+                                serde_json::from_str::<serde_json::Value>(&content)
+                            {
+                                account_json["proxy_id"] =
+                                    serde_json::Value::String(pid.clone());
+                                account_json["proxy_bound_at"] =
+                                    serde_json::json!(account.proxy_bound_at);
+                                if let Ok(json_str) =
+                                    serde_json::to_string_pretty(&account_json)
+                                {
+                                    let _ = std::fs::write(&account_path, json_str);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    logger::log_error(&format!(
+                        "[API] Failed to bind proxy {} to account {}: {}",
+                        pid, account.id, e
+                    ));
+                }
+            }
+        }
+    }
 
     // [FIX #1166] 账号变动后立即重新加载 TokenManager
     if let Err(e) = state.token_manager.load_accounts().await {
@@ -1577,7 +1663,7 @@ async fn admin_set_preferred_account(
 }
 
 async fn admin_fetch_zai_models(
-    Path(_id): Path<String>,
+    State(state): State<AppState>,
     Json(payload): Json<serde_json::Value>, // 复用前端传来的参数
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     // 这里简单实现，如果需要更复杂的抓取逻辑，可以调用 zai 模块
@@ -1601,8 +1687,19 @@ async fn admin_fetch_zai_models(
         .and_then(|v| v.as_str())
         .unwrap_or("https://api.z.ai");
 
-    // 尝试从 z.ai 获取模型
-    let client = reqwest::Client::new();
+    // Build proxy-aware client using upstream proxy config (fixes proxy bypass bug)
+    let client = {
+        let mut builder = reqwest::Client::builder()
+            .timeout(tokio::time::Duration::from_secs(30));
+        let upstream = state.upstream_proxy.read().await;
+        if upstream.enabled && !upstream.url.is_empty() {
+            let url = crate::proxy::config::normalize_proxy_url(&upstream.url);
+            if let Ok(proxy) = reqwest::Proxy::all(&url) {
+                builder = builder.proxy(proxy);
+            }
+        }
+        builder.build().unwrap_or_else(|_| reqwest::Client::new())
+    };
     let resp = client
         .get(format!("{}/v1/models", base_url))
         .header("Authorization", format!("Bearer {}", api_key))

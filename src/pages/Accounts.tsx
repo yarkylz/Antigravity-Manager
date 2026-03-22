@@ -1,6 +1,7 @@
 
 
 import {
+  AlertTriangle,
   Download,
   LayoutGrid,
   List,
@@ -31,7 +32,7 @@ import { isTauri } from "../utils/env";
 import { request as invoke } from "../utils/request";
 import { useTranslation } from "react-i18next";
 
-type FilterType = "all" | "pro" | "ultra" | "free";
+type FilterType = "all" | "pro" | "ultra" | "free" | "restricted";
 type ViewMode = "list" | "grid";
 
 
@@ -305,6 +306,7 @@ function Accounts() {
         const tier = a.quota?.subscription_tier?.toLowerCase();
         return tier && !tier.includes("pro") && !tier.includes("ultra");
       }).length,
+      restricted: searchedAccounts.filter((a) => !!a.quota?.restriction_reason).length,
     };
   }, [searchedAccounts]);
 
@@ -325,6 +327,8 @@ function Accounts() {
         const tier = a.quota?.subscription_tier?.toLowerCase();
         return tier && !tier.includes("pro") && !tier.includes("ultra");
       });
+    } else if (filter === "restricted") {
+      result = result.filter((a) => !!a.quota?.restriction_reason);
     }
 
     return result;
@@ -370,8 +374,8 @@ function Accounts() {
     setSelectedIds(newSet);
   };
 
-  const handleAddAccount = async (email: string, refreshToken: string) => {
-    await addAccount(email, refreshToken);
+  const handleAddAccount = async (email: string, refreshToken: string, customLabel?: string, proxyId?: string) => {
+    await addAccount(email, refreshToken, customLabel, proxyId);
   };
 
   const [switchingAccountId, setSwitchingAccountId] = useState<string | null>(
@@ -957,6 +961,29 @@ function Accounts() {
                 : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
             )}>
               {filterCounts.free}
+            </span>
+          </button>
+
+          {/* RESTRICTED */}
+          <button
+            className={cn(
+              "flex px-2 lg:px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all items-center gap-1 lg:gap-1.5 whitespace-nowrap shrink-0",
+              filter === 'restricted'
+                ? "bg-white dark:bg-base-100 text-amber-600 dark:text-amber-400 shadow-sm ring-1 ring-black/5"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
+            )}
+            onClick={() => setFilter('restricted')}
+            title={`Restricted (${filterCounts.restricted})`}
+          >
+            <AlertTriangle className="w-3 h-3" />
+            <span className="hidden md:inline">Restricted</span>
+            <span className={cn(
+              "px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-colors",
+              filter === 'restricted'
+                ? "bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            )}>
+              {filterCounts.restricted}
             </span>
           </button>
         </div>

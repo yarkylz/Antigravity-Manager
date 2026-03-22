@@ -28,12 +28,93 @@ pub async fn add_account(
     app: tauri::AppHandle,
     _email: String,
     refresh_token: String,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
 ) -> Result<Account, String> {
     let service = modules::account_service::AccountService::new(
         crate::modules::integration::SystemManager::Desktop(app.clone()),
     );
 
     let mut account = service.add_account(&refresh_token).await?;
+
+    // Apply custom label if provided
+    if let Some(ref label) = custom_label {
+        let label = label.trim().to_string();
+        if !label.is_empty() {
+            // Validate label length (same rule as update_account_label)
+            if label.chars().count() > 15 {
+                modules::logger::log_info("Custom label too long, truncating to 15 chars");
+            }
+            let truncated: String = label.chars().take(15).collect();
+            account.custom_label = Some(truncated.clone());
+
+            // Persist to account JSON file
+            let data_dir = modules::account::get_data_dir()?;
+            let account_path = data_dir
+                .join("accounts")
+                .join(format!("{}.json", account.id));
+            if account_path.exists() {
+                let content = std::fs::read_to_string(&account_path)
+                    .map_err(|e| format!("Failed to read account file: {}", e))?;
+                let mut account_json: serde_json::Value = serde_json::from_str(&content)
+                    .map_err(|e| format!("Failed to parse account file: {}", e))?;
+                account_json["custom_label"] = serde_json::Value::String(truncated);
+                let json_str = serde_json::to_string_pretty(&account_json)
+                    .map_err(|e| format!("Failed to serialize account: {}", e))?;
+                std::fs::write(&account_path, json_str)
+                    .map_err(|e| format!("Failed to write account file: {}", e))?;
+            }
+        }
+    }
+
+    // Bind proxy if provided
+    if let Some(ref pid) = proxy_id {
+        if !pid.is_empty() {
+            let proxy_state = app.state::<crate::commands::proxy::ProxyServiceState>();
+            let instance_lock = proxy_state.instance.read().await;
+            if let Some(instance) = instance_lock.as_ref() {
+                match instance
+                    .axum_server
+                    .proxy_pool_manager
+                    .bind_account_to_proxy(account.id.clone(), pid.clone())
+                    .await
+                {
+                    Ok(_) => {
+                        account.proxy_id = Some(pid.clone());
+                        account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
+
+                        // Persist proxy_id and proxy_bound_at to account JSON file
+                        let data_dir = modules::account::get_data_dir()?;
+                        let account_path = data_dir
+                            .join("accounts")
+                            .join(format!("{}.json", account.id));
+                        if account_path.exists() {
+                            let content = std::fs::read_to_string(&account_path)
+                                .map_err(|e| format!("Failed to read account file: {}", e))?;
+                            let mut account_json: serde_json::Value =
+                                serde_json::from_str(&content)
+                                    .map_err(|e| format!("Failed to parse account file: {}", e))?;
+                            account_json["proxy_id"] =
+                                serde_json::Value::String(pid.clone());
+                            account_json["proxy_bound_at"] =
+                                serde_json::json!(account.proxy_bound_at);
+                            let json_str = serde_json::to_string_pretty(&account_json)
+                                .map_err(|e| format!("Failed to serialize account: {}", e))?;
+                            std::fs::write(&account_path, json_str)
+                                .map_err(|e| format!("Failed to write account file: {}", e))?;
+                        }
+                    }
+                    Err(e) => {
+                        modules::logger::log_error(&format!(
+                            "Failed to bind proxy {} to account {}: {}",
+                            pid, account.id, e
+                        ));
+                    }
+                }
+            }
+            drop(instance_lock);
+        }
+    }
 
     // 自动刷新配额
     let _ = internal_refresh_account_quota(&app, &mut account).await;
@@ -951,7 +1032,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
     .await
     {
         modules::quota::ProjectResolutionOutcome::Resolved(project) => project,
-        modules::quota::ProjectResolutionOutcome::InProgressExhausted { subscription_tier } => {
+        modules::quota::ProjectResolutionOutcome::InProgressExhausted { subscription_tier, .. } => {
             return Ok(OnboardingResult {
                 success: false,
                 message: "Project acquisition did not finish before polling timed out".to_string(),
@@ -971,6 +1052,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
         modules::quota::ProjectResolutionOutcome::TerminalMissingProject {
             stage,
             subscription_tier,
+            restriction_reason,
         } => {
             // Google accepted the request (done=true) but didn't return a project_id.
             // Use a random fallback — project_id is just a routing hint, auth is via Bearer token.
@@ -984,12 +1066,14 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
             modules::quota::ResolvedCloudProject {
                 project_id: fallback,
                 subscription_tier,
+                restriction_reason,
             }
         }
         modules::quota::ProjectResolutionOutcome::TransportFailure {
             stage,
             error,
             subscription_tier,
+            ..
         } => {
             return Ok(OnboardingResult {
                 success: false,
@@ -1013,6 +1097,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
             status,
             body_preview,
             subscription_tier,
+            ..
         } => {
             return Ok(OnboardingResult {
                 success: false,
@@ -1031,6 +1116,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
             status,
             body_preview,
             subscription_tier,
+            ..
         } => {
             return Ok(OnboardingResult {
                 success: false,
@@ -1049,6 +1135,7 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
             stage,
             error,
             subscription_tier,
+            ..
         } => {
             return Ok(OnboardingResult {
                 success: false,

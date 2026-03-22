@@ -101,8 +101,8 @@ function Dashboard() {
         }
     };
 
-    const handleAddAccount = async (email: string, refreshToken: string) => {
-        await addAccount(email, refreshToken);
+    const handleAddAccount = async (email: string, refreshToken: string, customLabel?: string, proxyId?: string) => {
+        await addAccount(email, refreshToken, customLabel, proxyId);
         await fetchAccounts(); // 刷新列表
     };
 

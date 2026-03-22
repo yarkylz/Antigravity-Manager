@@ -1,6 +1,7 @@
-import { CheckCircle, Mail, Diamond, Gem, Circle, Tag, Lock } from 'lucide-react';
+import { CheckCircle, Mail, Diamond, Gem, Circle, Tag, Lock, AlertTriangle, Globe } from 'lucide-react';
 import { Account } from '../../types/account';
 import { formatTimeRemaining } from '../../utils/format';
+import { useConfigStore } from '../../stores/useConfigStore';
 
 interface CurrentAccountProps {
     account: Account | null;
@@ -11,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 
 function CurrentAccount({ account, onSwitch }: CurrentAccountProps) {
     const { t } = useTranslation();
+    const { config } = useConfigStore();
     if (!account) {
         return (
             <div className="bg-white dark:bg-base-100 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-base-200">
@@ -60,7 +62,15 @@ function CurrentAccount({ account, onSwitch }: CurrentAccountProps) {
                         <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{account.email}</span>
                     </div>
                     {/* 订阅类型 */}
-                    {account.quota?.subscription_tier && (() => {
+                    {account.quota?.restriction_reason ? (
+                        <span
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gradient-to-r from-amber-500 to-orange-500 text-white text-[10px] font-bold shadow-sm shrink-0 cursor-default"
+                            title={account.quota.restriction_reason}
+                        >
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            RESTRICTED
+                        </span>
+                    ) : account.quota?.subscription_tier && (() => {
                         const tier = account.quota.subscription_tier.toLowerCase();
                         if (tier.includes('ultra')) {
                             return (
@@ -92,6 +102,21 @@ function CurrentAccount({ account, onSwitch }: CurrentAccountProps) {
                             {account.custom_label}
                         </span>
                     )}
+                    {/* 绑定代理 */}
+                    {account.proxy_id && (() => {
+                        const proxy = config?.proxy?.proxy_pool?.proxies?.find((p) => p.id === account.proxy_id);
+                        return proxy ? (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 text-[10px] font-bold shadow-sm shrink-0" title={proxy.url}>
+                                <Globe className="w-2.5 h-2.5" />
+                                {proxy.name || proxy.id}
+                            </span>
+                        ) : (
+                            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-[10px] font-bold shadow-sm shrink-0" title={`Proxy ${account.proxy_id} not found`}>
+                                <Globe className="w-2.5 h-2.5" />
+                                ???
+                            </span>
+                        );
+                    })()}
                 </div>
 
                 {/* Gemini Pro 配额 */}

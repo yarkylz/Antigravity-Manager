@@ -477,14 +477,56 @@ pub async fn resolve_project_with_contract(
                 };
             }
 
-            match res.json::<LoadProjectResponse>().await {
-                Ok(data) => {
+            match res.json::<serde_json::Value>().await {
+                Ok(raw_data) => {
+                    // Log raw response to understand what Google actually returns
+                    crate::modules::logger::log_info(&format!(
+                        "📡 [{}] loadCodeAssist raw response keys: {}",
+                        email,
+                        raw_data
+                            .as_object()
+                            .map(|o| o.keys().cloned().collect::<Vec<_>>().join(", "))
+                            .unwrap_or_else(|| "not an object".to_string())
+                    ));
+
+                    // Log tier-related fields specifically
+                    for field in &["currentTier", "paidTier", "allowedTiers", "ineligibleTiers", "subscriptionType"] {
+                        if let Some(val) = raw_data.get(field) {
+                            crate::modules::logger::log_info(&format!(
+                                "📊 [{}] loadCodeAssist {}: {}",
+                                email,
+                                field,
+                                response_preview(&val.to_string(), 300)
+                            ));
+                        }
+                    }
+
+                    let data: LoadProjectResponse = match serde_json::from_value(raw_data) {
+                        Ok(d) => d,
+                        Err(error) => {
+                            crate::modules::logger::log_warn(&format!(
+                                "⚠️ [{}] loadCodeAssist: failed to parse response JSON: {}",
+                                email, error
+                            ));
+                            return ProjectResolutionOutcome::ParseFailure {
+                                stage: ProjectResolutionStage::LoadCodeAssist,
+                                error: error.to_string(),
+                                subscription_tier: None,
+                            };
+                        }
+                    };
+
                     let (onboard_tier_id, subscription_tier) = extract_project_metadata(&data);
 
                     if let Some(ref tier) = subscription_tier {
                         crate::modules::logger::log_info(&format!(
                             "📊 [{}] Subscription identified successfully: {}",
                             email, tier
+                        ));
+                    } else {
+                        crate::modules::logger::log_warn(&format!(
+                            "⚠️ [{}] No subscription_tier found in loadCodeAssist response (paidTier, currentTier, allowedTiers all empty)",
+                            email
                         ));
                     }
 
@@ -514,10 +556,10 @@ pub async fn resolve_project_with_contract(
                 }
                 Err(error) => {
                     crate::modules::logger::log_warn(&format!(
-                        "⚠️ [{}] loadCodeAssist: failed to parse response JSON: {}",
+                        "⚠️ [{}] loadCodeAssist: failed to read response body: {}",
                         email, error
                     ));
-                    ProjectResolutionOutcome::ParseFailure {
+                    ProjectResolutionOutcome::TransportFailure {
                         stage: ProjectResolutionStage::LoadCodeAssist,
                         error: error.to_string(),
                         subscription_tier: None,

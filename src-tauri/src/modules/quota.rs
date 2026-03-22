@@ -197,6 +197,26 @@ pub fn normalize_real_project_id(value: Option<&str>) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+/// Generate a random fallback project ID when real resolution fails.
+/// Format matches CLIProxyAPI style: "adj-noun-hex5" (e.g. "swift-flow-d4e1a").
+fn generate_fallback_project_id() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const ADJECTIVES: &[&str] = &["useful", "bright", "swift", "calm", "bold", "keen", "warm", "pure"];
+    const NOUNS: &[&str] = &["fuze", "wave", "spark", "flow", "core", "node", "link", "beam"];
+
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+
+    let adj = ADJECTIVES[(seed as usize) % ADJECTIVES.len()];
+    let noun = NOUNS[((seed >> 16) as usize) % NOUNS.len()];
+    let hex_part = format!("{:05x}", (seed >> 32) & 0xfffff);
+
+    format!("{}-{}-{}", adj, noun, hex_part)
+}
+
 fn persist_project_id_for_account(
     account_id: Option<&str>,
     project_id: Option<&str>,
@@ -771,19 +791,44 @@ pub async fn get_valid_token_for_warmup(
         }
     }
 
-    // Fetch project_id
-    let (project_id, _) = fetch_project_id(
-        &account.token.access_token,
-        &account.email,
-        Some(&account.id),
-    )
-    .await;
-    let final_pid = project_id.ok_or_else(|| {
-        format!(
-            "[Warmup] Missing project_id after shared project resolution for {}",
-            account.email
+    // Step 1: Try cached project_id from account
+    let cached_pid = normalize_real_project_id(account.token.project_id.as_deref());
+
+    let final_pid = if let Some(pid) = cached_pid {
+        tracing::debug!(
+            "[Warmup] Using cached project_id for {}: {}",
+            account.email,
+            pid
+        );
+        pid
+    } else {
+        // Step 2: Fetch from API (loadCodeAssist → onboardUser)
+        let (project_id, _) = fetch_project_id(
+            &account.token.access_token,
+            &account.email,
+            Some(&account.id),
         )
-    })?;
+        .await;
+
+        if let Some(pid) = project_id {
+            // Persist newly resolved project_id for future cache hits
+            if let Err(e) = persist_project_id_for_account(Some(&account.id), Some(pid.as_str())) {
+                crate::modules::logger::log_warn(&format!(
+                    "[Warmup] Failed to persist resolved project_id for {}: {}",
+                    account.email, e
+                ));
+            }
+            pid
+        } else {
+            // Step 3: Generate random fallback — request will still work via Bearer token
+            let fallback = generate_fallback_project_id();
+            crate::modules::logger::log_warn(&format!(
+                "[Warmup] No project_id from cache or API for {}, using fallback: {}",
+                account.email, fallback
+            ));
+            fallback
+        }
+    };
 
     Ok((account.token.access_token, final_pid))
 }

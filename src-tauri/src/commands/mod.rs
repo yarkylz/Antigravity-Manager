@@ -1278,7 +1278,7 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                 if let Some(ref reason) = quota_data.restriction_reason {
                     let _ = crate::modules::account::mark_account_forbidden(
                         &account_id,
-                        &format!("Test request: Restricted - {}", reason),
+                        &format!("Restricted: {}", reason),
                     );
                     Ok(TestRequestResult {
                         success: false,
@@ -1287,7 +1287,7 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                         requires_verification: None,
                         verification_url: None,
                         is_banned: Some(false),
-                        is_forbidden: Some(false),
+                        is_forbidden: Some(true),
                         details: Some(format!(
                             "Project: {}, Tier: {}, Models: {}, Reason: {}",
                             project_id, tier, model_count, reason

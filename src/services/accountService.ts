@@ -56,11 +56,11 @@ export async function refreshAllQuotas(): Promise<RefreshStats> {
 }
 
 // OAuth
-export async function startOAuthLogin(): Promise<Account> {
+export async function startOAuthLogin(customLabel?: string, proxyId?: string): Promise<Account> {
     ensureTauriEnvironment();
 
     try {
-        return await invoke('start_oauth_login');
+        return await invoke('start_oauth_login', { customLabel, proxyId });
     } catch (error) {
         // 增强错误信息
         if (typeof error === 'string') {
@@ -75,10 +75,10 @@ export async function startOAuthLogin(): Promise<Account> {
     }
 }
 
-export async function completeOAuthLogin(): Promise<Account> {
+export async function completeOAuthLogin(customLabel?: string, proxyId?: string): Promise<Account> {
     ensureTauriEnvironment();
     try {
-        return await invoke('complete_oauth_login');
+        return await invoke('complete_oauth_login', { customLabel, proxyId });
     } catch (error) {
         if (typeof error === 'string') {
             if (error.includes('Refresh Token') || error.includes('refresh_token')) {
@@ -96,12 +96,12 @@ export async function cancelOAuthLogin(): Promise<void> {
 }
 
 // 导入
-export async function importV1Accounts(): Promise<Account[]> {
-    return await invoke('import_v1_accounts');
+export async function importV1Accounts(customLabel?: string, proxyId?: string): Promise<Account[]> {
+    return await invoke('import_v1_accounts', { customLabel, proxyId });
 }
 
-export async function importFromDb(): Promise<Account> {
-    return await invoke('import_from_db');
+export async function importFromDb(customLabel?: string, proxyId?: string): Promise<Account> {
+    return await invoke('import_from_db', { customLabel, proxyId });
 }
 
 export async function importFromCustomDb(path: string): Promise<Account> {

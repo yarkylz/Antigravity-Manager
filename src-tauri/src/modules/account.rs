@@ -258,6 +258,7 @@ mod tests {
                     created_at: now,
                     last_used: now,
                     proxy_id: None,
+                    validation_url: None,
                 },
                 AccountSummary {
                     id: "acc-2".to_string(),
@@ -269,6 +270,7 @@ mod tests {
                     created_at: now - 100,
                     last_used: now - 50,
                     proxy_id: None,
+                    validation_url: None,
                 },
             ],
             current_account_id: Some("acc-1".to_string()),
@@ -524,6 +526,7 @@ fn rebuild_index_from_accounts_in_dir(data_dir: &PathBuf) -> Result<AccountIndex
                                     created_at: account.created_at,
                                     last_used: account.last_used,
                                     proxy_id: account.proxy_id,
+                                    validation_url: account.validation_url,
                                 });
                             }
                             Err(e) => {
@@ -787,6 +790,7 @@ pub fn add_account(
         created_at: account.created_at,
         last_used: account.last_used,
         proxy_id: account.proxy_id.clone(),
+        validation_url: account.validation_url.clone(),
     });
 
     // If first account, set as current

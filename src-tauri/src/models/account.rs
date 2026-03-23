@@ -127,6 +127,9 @@ pub struct AccountSummary {
     /// 绑定的代理 ID [NEW]
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub proxy_id: Option<String>,
+    /// 验证链接 URL [#1522]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub validation_url: Option<String>,
 }
 
 impl AccountIndex {

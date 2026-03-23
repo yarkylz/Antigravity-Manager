@@ -122,6 +122,79 @@ pub async fn add_account(
     Ok(account)
 }
 
+/// Apply custom_label and proxy_id to an account after creation
+async fn apply_account_metadata(
+    app: &tauri::AppHandle,
+    account: &mut modules::account::Account,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
+) -> Result<(), String> {
+    let mut needs_persistence = false;
+    let data_dir = modules::account::get_data_dir()?;
+    let account_path = data_dir
+        .join("accounts")
+        .join(format!("{}.json", account.id));
+
+    if account_path.exists() {
+        let content = std::fs::read_to_string(&account_path)
+            .map_err(|e| format!("Failed to read account file: {}", e))?;
+        let mut json = serde_json::from_str::<serde_json::Value>(&content)
+            .map_err(|e| format!("Failed to parse account file: {}", e))?;
+
+        // Apply custom label if provided
+        if let Some(ref label) = custom_label {
+            let label = label.trim().to_string();
+            if !label.is_empty() {
+                let truncated: String = label.chars().take(15).collect();
+                account.custom_label = Some(truncated.clone());
+                json["custom_label"] = serde_json::Value::String(truncated);
+                needs_persistence = true;
+            }
+        }
+
+        // Bind proxy if provided
+        if let Some(ref pid) = proxy_id {
+            if !pid.is_empty() {
+                let proxy_state = app.state::<crate::commands::proxy::ProxyServiceState>();
+                let instance_lock = proxy_state.instance.read().await;
+                if let Some(instance) = instance_lock.as_ref() {
+                    match instance
+                        .axum_server
+                        .proxy_pool_manager
+                        .bind_account_to_proxy(account.id.clone(), pid.clone())
+                    {
+                        Ok(_) => {
+                            account.proxy_id = Some(pid.clone());
+                            account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
+                            json["proxy_id"] = serde_json::Value::String(pid.clone());
+                            json["proxy_bound_at"] = serde_json::json!(account.proxy_bound_at);
+                            needs_persistence = true;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                proxy_id = %pid,
+                                account_id = %account.id,
+                                error = %e,
+                                "Proxy binding failed after OAuth account was saved"
+                            );
+                        }
+                    }
+                    drop(instance_lock);
+                }
+            }
+        }
+
+        if needs_persistence {
+            let json_str = serde_json::to_string_pretty(&json)
+                .map_err(|e| format!("Failed to serialize account: {}", e))?;
+            std::fs::write(&account_path, json_str)
+                .map_err(|e| format!("Failed to write account file: {}", e))?;
+        }
+    }
+
+    Ok(())
+}
+
 /// 删除账号
 /// 删除账号
 #[tauri::command]
@@ -470,13 +543,20 @@ pub async fn save_config(
 // --- OAuth 命令 ---
 
 #[tauri::command]
-pub async fn start_oauth_login(app_handle: tauri::AppHandle) -> Result<Account, String> {
+pub async fn start_oauth_login(
+    app_handle: tauri::AppHandle,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
+) -> Result<Account, String> {
     modules::logger::log_info("开始 OAuth 授权流程...");
     let service = modules::account_service::AccountService::new(
         crate::modules::integration::SystemManager::Desktop(app_handle.clone()),
     );
 
     let mut account = service.start_oauth_login().await?;
+
+    // 应用 custom label 和 proxy binding
+    apply_account_metadata(&app_handle, &mut account, custom_label, proxy_id).await?;
 
     // 自动触发刷新额度
     let _ = internal_refresh_account_quota(&app_handle, &mut account).await;
@@ -492,13 +572,20 @@ pub async fn start_oauth_login(app_handle: tauri::AppHandle) -> Result<Account, 
 
 /// 完成 OAuth 授权（不自动打开浏览器）
 #[tauri::command]
-pub async fn complete_oauth_login(app_handle: tauri::AppHandle) -> Result<Account, String> {
+pub async fn complete_oauth_login(
+    app_handle: tauri::AppHandle,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
+) -> Result<Account, String> {
     modules::logger::log_info("完成 OAuth 授权流程 (manual)...");
     let service = modules::account_service::AccountService::new(
         crate::modules::integration::SystemManager::Desktop(app_handle.clone()),
     );
 
     let mut account = service.complete_oauth_login().await?;
+
+    // 应用 custom label 和 proxy binding
+    apply_account_metadata(&app_handle, &mut account, custom_label, proxy_id).await?;
 
     // 自动触发刷新额度
     let _ = internal_refresh_account_quota(&app_handle, &mut account).await;
@@ -540,8 +627,16 @@ pub async fn submit_oauth_code(code: String, state: Option<String>) -> Result<()
 pub async fn import_v1_accounts(
     app: tauri::AppHandle,
     proxy_state: tauri::State<'_, crate::commands::proxy::ProxyServiceState>,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
 ) -> Result<Vec<Account>, String> {
     let accounts = modules::migration::import_from_v1().await?;
+
+    // 对导入的账号应用 metadata（如果是单个账号）
+    if accounts.len() == 1 {
+        let mut account = accounts[0].clone();
+        apply_account_metadata(&app, &mut account, custom_label, proxy_id).await?;
+    }
 
     // 对导入的账号尝试刷新一波
     for mut account in accounts.clone() {
@@ -558,9 +653,14 @@ pub async fn import_v1_accounts(
 pub async fn import_from_db(
     app: tauri::AppHandle,
     proxy_state: tauri::State<'_, crate::commands::proxy::ProxyServiceState>,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
 ) -> Result<Account, String> {
     // 同步函数包装为 async
     let mut account = modules::migration::import_from_db().await?;
+
+    // 应用 custom label 和 proxy binding
+    apply_account_metadata(&app, &mut account, custom_label, proxy_id).await?;
 
     // 既然是从数据库导入（即 IDE 当前账号），自动将其设为 Manager 的当前账号
     let account_id = account.id.clone();

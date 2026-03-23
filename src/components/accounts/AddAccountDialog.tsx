@@ -49,6 +49,7 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
     }, [oauthUrl, status, activeTab, isOpen]);
 
     // Reset state when dialog opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         if (isOpen) {
             resetState();
@@ -91,7 +92,7 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                 setMessage(`${t('accounts.add.tabs.oauth')}...`);
 
                 try {
-                    await completeOAuthLogin();
+                    await completeOAuthLogin(customLabel, selectedProxyId || undefined);
                     setStatus('success');
                     setMessage(`${t('accounts.add.tabs.oauth')} ${t('common.success')}!`);
                     setTimeout(() => {
@@ -360,7 +361,9 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
 
     const handleCompleteOAuth = () => {
         // Manual flow: user already authorized in their preferred browser, just finish the flow.
-        handleAction(t('accounts.add.tabs.oauth'), completeOAuthLogin, { clearOauthUrl: false });
+        // Pass current customLabel and proxyId
+        const completeWithMeta = () => completeOAuthLogin(customLabel, selectedProxyId || undefined);
+        handleAction(t('accounts.add.tabs.oauth'), completeWithMeta, { clearOauthUrl: false });
     };
 
     const handleCopyUrl = async () => {
@@ -409,11 +412,13 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
     };
 
     const handleImportDb = () => {
-        handleAction(t('accounts.add.tabs.import'), importFromDb);
+        const importWithMeta = () => importFromDb(customLabel, selectedProxyId || undefined);
+        handleAction(t('accounts.add.tabs.import'), importWithMeta);
     };
 
     const handleImportV1 = () => {
-        handleAction(t('accounts.add.import.btn_v1'), importV1Accounts);
+        const importWithMeta = () => importV1Accounts(customLabel, selectedProxyId || undefined);
+        handleAction(t('accounts.add.import.btn_v1'), importWithMeta);
     };
 
     const handleImportCustomDb = async () => {
@@ -643,52 +648,6 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                                             {t('accounts.add.token.hint')}
                                         </p>
                                     </div>
-
-                                    {/* Optional: Tag + Proxy - available for all tabs */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        {/* Custom Label / Tag */}
-                                        <div>
-                                            <label htmlFor="add-account-tag" className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                                                <Tag className="w-3 h-3" />
-                                                Tag
-                                            </label>
-                                            <input
-                                                id="add-account-tag"
-                                                type="text"
-                                                className="w-full text-xs py-2 px-3 bg-white dark:bg-base-100 border border-gray-200 dark:border-base-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-300 dark:placeholder:text-gray-600"
-                                                placeholder="e.g. Main, Work..."
-                                                value={customLabel}
-                                                onChange={(e) => setCustomLabel(e.target.value)}
-                                                maxLength={15}
-                                                disabled={status === 'loading' || status === 'success'}
-                                            />
-                                        </div>
-
-                                        {/* Proxy Selector */}
-                                        <div>
-                                            <label htmlFor="add-account-proxy" className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-                                                <Globe className="w-3 h-3" />
-                                                Proxy
-                                            </label>
-                                            <div className="relative">
-                                                <select
-                                                    id="add-account-proxy"
-                                                    className="w-full text-xs py-2 px-3 bg-white dark:bg-base-100 border border-gray-200 dark:border-base-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none pr-7 text-gray-700 dark:text-gray-300"
-                                                    value={selectedProxyId}
-                                                    onChange={(e) => setSelectedProxyId(e.target.value)}
-                                                    disabled={status === 'loading' || status === 'success' || !config?.proxy?.proxy_pool?.proxies?.length}
-                                                >
-                                                    <option value="">None</option>
-                                                    {config?.proxy?.proxy_pool?.proxies?.filter((p) => p.enabled !== false).map((p) => (
-                                                        <option key={p.id} value={p.id}>
-                                                            {p.name || p.id}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                                <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                                            </div>
-                                        </div>
-                                    </div>
                                 </div>
                             )}
 
@@ -742,6 +701,52 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                                     </div>
                                 </div>
                             )}
+                        </div>
+
+                        {/* Tag + Proxy - available for all tabs */}
+                        <div className="grid grid-cols-2 gap-3 mt-4 pt-4 border-t border-gray-100 dark:border-base-200">
+                            {/* Custom Label / Tag */}
+                            <div>
+                                <label htmlFor="add-account-tag" className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                                    <Tag className="w-3 h-3" />
+                                    Tag
+                                </label>
+                                <input
+                                    id="add-account-tag"
+                                    type="text"
+                                    className="w-full text-xs py-2 px-3 bg-white dark:bg-base-100 border border-gray-200 dark:border-base-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-gray-300 dark:placeholder:text-gray-600"
+                                    placeholder="e.g. Main, Work..."
+                                    value={customLabel}
+                                    onChange={(e) => setCustomLabel(e.target.value)}
+                                    maxLength={15}
+                                    disabled={status === 'loading' || status === 'success'}
+                                />
+                            </div>
+
+                            {/* Proxy Selector */}
+                            <div>
+                                <label htmlFor="add-account-proxy" className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+                                    <Globe className="w-3 h-3" />
+                                    Proxy
+                                </label>
+                                <div className="relative">
+                                    <select
+                                        id="add-account-proxy"
+                                        className="w-full text-xs py-2 px-3 bg-white dark:bg-base-100 border border-gray-200 dark:border-base-300 rounded-lg focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all appearance-none pr-7 text-gray-700 dark:text-gray-300"
+                                        value={selectedProxyId}
+                                        onChange={(e) => setSelectedProxyId(e.target.value)}
+                                        disabled={status === 'loading' || status === 'success' || !config?.proxy?.proxy_pool?.proxies?.length}
+                                    >
+                                        <option value="">None</option>
+                                        {config?.proxy?.proxy_pool?.proxies?.filter((p) => p.enabled !== false).map((p) => (
+                                            <option key={p.id} value={p.id}>
+                                                {p.name || p.id}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                                </div>
+                            </div>
                         </div>
 
                         <div className="flex gap-3 w-full mt-6">

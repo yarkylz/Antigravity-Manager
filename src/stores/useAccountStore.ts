@@ -21,10 +21,10 @@ interface AccountState {
 
     // 新增 actions
     startOAuthLogin: () => Promise<void>;
-    completeOAuthLogin: () => Promise<void>;
+    completeOAuthLogin: (customLabel?: string, proxyId?: string) => Promise<void>;
     cancelOAuthLogin: () => Promise<void>;
-    importV1Accounts: () => Promise<void>;
-    importFromDb: () => Promise<void>;
+    importV1Accounts: (customLabel?: string, proxyId?: string) => Promise<void>;
+    importFromDb: (customLabel?: string, proxyId?: string) => Promise<void>;
     importFromCustomDb: (path: string) => Promise<void>;
     syncAccountFromDb: () => Promise<void>;
     toggleProxyStatus: (accountId: string, enable: boolean, reason?: string) => Promise<void>;
@@ -186,10 +186,10 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         }
     },
 
-    completeOAuthLogin: async () => {
+    completeOAuthLogin: async (customLabel?: string, proxyId?: string) => {
         set({ loading: true, error: null });
         try {
-            await accountService.completeOAuthLogin();
+            await accountService.completeOAuthLogin(customLabel, proxyId);
             await get().fetchAccounts();
             set({ loading: false });
         } catch (error) {
@@ -207,10 +207,10 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         }
     },
 
-    importV1Accounts: async () => {
+    importV1Accounts: async (customLabel?: string, proxyId?: string) => {
         set({ loading: true, error: null });
         try {
-            await accountService.importV1Accounts();
+            await accountService.importV1Accounts(customLabel, proxyId);
             await get().fetchAccounts();
             set({ loading: false });
         } catch (error) {
@@ -219,10 +219,10 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         }
     },
 
-    importFromDb: async () => {
+    importFromDb: async (customLabel?: string, proxyId?: string) => {
         set({ loading: true, error: null });
         try {
-            await accountService.importFromDb();
+            await accountService.importFromDb(customLabel, proxyId);
             await Promise.all([
                 get().fetchAccounts(),
                 get().fetchCurrentAccount()

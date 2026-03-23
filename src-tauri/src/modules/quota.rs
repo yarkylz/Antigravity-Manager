@@ -63,6 +63,7 @@ pub struct ResolvedCloudProject {
     pub project_id: String,
     pub subscription_tier: Option<String>,
     pub restriction_reason: Option<String>,
+    pub validation_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,35 +87,41 @@ pub enum ProjectResolutionOutcome {
     InProgressExhausted {
         subscription_tier: Option<String>,
         restriction_reason: Option<String>,
+        validation_url: Option<String>,
     },
     TransportFailure {
         stage: ProjectResolutionStage,
         error: String,
         subscription_tier: Option<String>,
         restriction_reason: Option<String>,
+        validation_url: Option<String>,
     },
     LoadHttpFailure {
         status: u16,
         body_preview: String,
         subscription_tier: Option<String>,
         restriction_reason: Option<String>,
+        validation_url: Option<String>,
     },
     OnboardHttpFailure {
         status: u16,
         body_preview: String,
         subscription_tier: Option<String>,
         restriction_reason: Option<String>,
+        validation_url: Option<String>,
     },
     TerminalMissingProject {
         stage: ProjectResolutionStage,
         subscription_tier: Option<String>,
         restriction_reason: Option<String>,
+        validation_url: Option<String>,
     },
     ParseFailure {
         stage: ProjectResolutionStage,
         error: String,
         subscription_tier: Option<String>,
         restriction_reason: Option<String>,
+        validation_url: Option<String>,
     },
 }
 
@@ -162,6 +169,28 @@ impl ProjectResolutionOutcome {
             } => restriction_reason.clone(),
         }
     }
+
+    pub fn validation_url(&self) -> Option<String> {
+        match self {
+            Self::Resolved(project) => project.validation_url.clone(),
+            Self::InProgressExhausted { validation_url, .. }
+            | Self::TransportFailure {
+                validation_url, ..
+            }
+            | Self::LoadHttpFailure {
+                validation_url, ..
+            }
+            | Self::OnboardHttpFailure {
+                validation_url, ..
+            }
+            | Self::TerminalMissingProject {
+                validation_url, ..
+            }
+            | Self::ParseFailure {
+                validation_url, ..
+            } => validation_url.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -184,6 +213,18 @@ struct IneligibleTier {
     reason_code: Option<String>,
     #[serde(rename = "reasonMessage")]
     reason_message: Option<String>,
+    /// Additional fields that may contain validation URL
+    #[serde(rename = "infoUrl", default)]
+    info_url: Option<String>,
+    #[serde(rename = "helpUrl", default)]
+    help_url: Option<String>,
+    #[serde(rename = "validationUrl", default)]
+    validation_url: Option<String>,
+    #[serde(rename = "actionUrl", default)]
+    action_url: Option<String>,
+    /// Alternative field name for validation URL
+    #[serde(rename = "validationErrorMessage", default)]
+    validation_error_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -292,7 +333,7 @@ fn response_preview(body: &str, max_len: usize) -> String {
     }
 }
 
-fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<String>, Option<String>) {
+fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<String>, Option<String>, Option<String>) {
     let onboard_tier_id = data
         .allowed_tiers
         .as_ref()
@@ -312,20 +353,36 @@ fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<Strin
         .map(|tiers| !tiers.is_empty())
         .unwrap_or(false);
 
-    // Extract restriction reason from first ineligible tier
-    let restriction_reason = if is_ineligible {
-        data.ineligible_tiers
-            .as_ref()
-            .and_then(|tiers| tiers.first())
-            .and_then(|tier| {
-                // Prefer reasonMessage, fall back to reasonCode
-                tier.reason_message
-                    .clone()
-                    .or_else(|| tier.reason_code.clone())
-            })
-    } else {
-        None
-    };
+    // Extract restriction reason and validation URL from first ineligible tier
+    let mut restriction_reason = None;
+    let mut validation_url = None;
+
+    if is_ineligible {
+        if let Some(first_tier) = data.ineligible_tiers.as_ref().and_then(|tiers| tiers.first()) {
+            // Prefer reasonMessage, fall back to reasonCode
+            restriction_reason = first_tier
+                .reason_message
+                .clone()
+                .or_else(|| first_tier.reason_code.clone());
+
+            // Extract validation URL from various possible fields
+            validation_url = first_tier
+                .validation_url
+                .clone()
+                .or_else(|| first_tier.info_url.clone())
+                .or_else(|| first_tier.help_url.clone())
+                .or_else(|| first_tier.action_url.clone())
+                .or_else(|| {
+                    // Try to extract URL from validationErrorMessage if present
+                    first_tier.validation_error_message.as_ref()
+                        .and_then(|msg| {
+                            // Try to find a URL in the message
+                            let url_regex = regex::Regex::new(r#"https://[^\s]+"#).ok();
+                            url_regex.and_then(|re| re.find(msg).map(|m| m.as_str().to_string()))
+                        })
+                });
+        }
+    }
 
     if subscription_tier.is_none() {
         if !is_ineligible {
@@ -348,7 +405,7 @@ fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<Strin
         }
     }
 
-    (onboard_tier_id, subscription_tier, restriction_reason)
+    (onboard_tier_id, subscription_tier, restriction_reason, validation_url)
 }
 
 async fn call_onboard_user(
@@ -358,6 +415,7 @@ async fn call_onboard_user(
     account_id: Option<&str>,
     subscription_tier: Option<String>,
     restriction_reason: Option<String>,
+    validation_url: Option<String>,
 ) -> ProjectResolutionOutcome {
     let client = create_standard_client(account_id).await;
     let body = json!({
@@ -414,6 +472,7 @@ async fn call_onboard_user(
                         body_preview,
                         subscription_tier,
                         restriction_reason,
+                        validation_url,
                     };
                 }
 
@@ -430,6 +489,7 @@ async fn call_onboard_user(
                                     project_id,
                                     subscription_tier,
                                     restriction_reason,
+                                    validation_url,
                                 });
                             }
 
@@ -441,6 +501,7 @@ async fn call_onboard_user(
                                 stage: ProjectResolutionStage::OnboardUser,
                                 subscription_tier,
                                 restriction_reason,
+                                validation_url,
                             };
                         }
 
@@ -458,6 +519,7 @@ async fn call_onboard_user(
                             error: error.to_string(),
                             subscription_tier,
                             restriction_reason,
+                            validation_url,
                         };
                     }
                 }
@@ -472,6 +534,7 @@ async fn call_onboard_user(
                     error: error.to_string(),
                     subscription_tier,
                     restriction_reason,
+                    validation_url,
                 };
             }
         }
@@ -481,7 +544,7 @@ async fn call_onboard_user(
         "⚠️ [{}] onboardUser: max polling attempts reached without done=true",
         email
     ));
-    ProjectResolutionOutcome::InProgressExhausted { subscription_tier, restriction_reason }
+    ProjectResolutionOutcome::InProgressExhausted { subscription_tier, restriction_reason, validation_url }
 }
 
 pub async fn resolve_project_with_contract(
@@ -530,6 +593,7 @@ pub async fn resolve_project_with_contract(
                     body_preview,
                     subscription_tier: None,
                     restriction_reason: None,
+                    validation_url: None,
                 };
             }
 
@@ -569,11 +633,12 @@ pub async fn resolve_project_with_contract(
                                 error: error.to_string(),
                                 subscription_tier: None,
                                 restriction_reason: None,
+                                validation_url: None,
                             };
                         }
                     };
 
-                    let (onboard_tier_id, subscription_tier, restriction_reason) = extract_project_metadata(&data);
+                    let (onboard_tier_id, subscription_tier, restriction_reason, validation_url) = extract_project_metadata(&data);
 
                     if let Some(ref tier) = subscription_tier {
                         crate::modules::logger::log_info(&format!(
@@ -594,6 +659,14 @@ pub async fn resolve_project_with_contract(
                         ));
                     }
 
+                    // Log validation URL if found
+                    if let Some(ref url) = validation_url {
+                        crate::modules::logger::log_info(&format!(
+                            "🔗 [{}] Validation URL found: {}",
+                            email, url
+                        ));
+                    }
+
                     if let Some(project_id) = data
                         .project
                         .as_ref()
@@ -603,6 +676,7 @@ pub async fn resolve_project_with_contract(
                             project_id,
                             subscription_tier,
                             restriction_reason,
+                            validation_url,
                         });
                     }
 
@@ -617,6 +691,7 @@ pub async fn resolve_project_with_contract(
                         account_id,
                         subscription_tier,
                         restriction_reason,
+                        validation_url,
                     )
                     .await
                 }
@@ -654,12 +729,12 @@ async fn fetch_project_id(
     access_token: &str,
     email: &str,
     account_id: Option<&str>,
-) -> (Option<String>, Option<String>, Option<String>) {
+) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
     match resolve_project_with_contract(access_token, Some(email), account_id).await {
         ProjectResolutionOutcome::Resolved(project) => {
-            (Some(project.project_id), project.subscription_tier, project.restriction_reason)
+            (Some(project.project_id), project.subscription_tier, project.restriction_reason, project.validation_url)
         }
-        outcome => (None, outcome.subscription_tier(), outcome.restriction_reason()),
+        outcome => (None, outcome.subscription_tier(), outcome.restriction_reason(), outcome.validation_url()),
     }
 }
 
@@ -695,22 +770,22 @@ pub async fn fetch_quota_with_cache(
 
     // Optimization: Skip loadCodeAssist call if project_id is cached to save API quota
     let cached_project_id = normalize_real_project_id(cached_project_id);
-    let (project_id, subscription_tier, restriction_reason) = if let Some(pid) = cached_project_id {
+        let (project_id, subscription_tier, restriction_reason, validation_url) = if let Some(pid) = cached_project_id {
         // Also pull cached subscription_tier and restriction_reason so they don't become None/Unknown
-        let (cached_tier, cached_reason) = account_id
+        let (cached_tier, cached_reason, cached_validation_url) = account_id
             .and_then(|id| {
                 crate::modules::account::load_account(id)
                     .ok()
                     .and_then(|acc| acc.quota)
             })
-            .map(|q| (q.subscription_tier, q.restriction_reason))
-            .unwrap_or((None, None));
+            .map(|q| (q.subscription_tier, q.restriction_reason, q.validation_url))
+            .unwrap_or((None, None, None));
         
         // If cached tier is None, do a fresh resolution to get the subscription tier
         if cached_tier.is_none() {
             fetch_project_id(access_token, email, account_id).await
         } else {
-            (Some(pid), cached_tier, cached_reason)
+            (Some(pid), cached_tier, cached_reason, cached_validation_url)
         }
     } else {
         fetch_project_id(access_token, email, account_id).await
@@ -728,6 +803,7 @@ pub async fn fetch_quota_with_cache(
         let mut q = QuotaData::new();
         q.subscription_tier = subscription_tier.clone();
         q.restriction_reason = restriction_reason.clone();
+        q.validation_url = validation_url.clone();
         return Ok((q, None));
     }
 
@@ -863,6 +939,7 @@ pub async fn fetch_quota_with_cache(
                 // Set subscription tier
                 quota_data.subscription_tier = subscription_tier.clone();
                 quota_data.restriction_reason = restriction_reason.clone();
+                quota_data.validation_url = validation_url.clone();
 
                 persist_project_id_for_account(account_id, project_id.as_deref())
                     .map_err(AppError::Account)?;

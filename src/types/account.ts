@@ -40,6 +40,7 @@ export interface QuotaData {
     forbidden_reason?: string;
     subscription_tier?: string;  // 订阅类型: FREE/PRO/ULTRA
     restriction_reason?: string;  // 账号受限原因 (来自 ineligibleTiers)
+    validation_url?: string;  // 验证链接 URL
     model_forwarding_rules?: Record<string, string>; // 废弃模型转发表
 }
 

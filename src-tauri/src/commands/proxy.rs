@@ -764,7 +764,7 @@ pub async fn check_proxy_health(
     let instance_lock = state.instance.read().await;
     if let Some(instance) = instance_lock.as_ref() {
         let pool_state = instance.axum_server.proxy_pool_state.clone();
-        let manager = crate::proxy::proxy_pool::ProxyPoolManager::new(pool_state.clone());
+        let manager = crate::proxy::proxy_pool::ProxyPoolManager::new(pool_state.clone(), None);
 
         manager.health_check().await?;
 

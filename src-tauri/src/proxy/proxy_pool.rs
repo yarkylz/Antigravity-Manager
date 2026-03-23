@@ -1,4 +1,4 @@
-use crate::proxy::config::{ProxyEntry, ProxyPoolConfig, ProxySelectionStrategy};
+use crate::proxy::config::{ProxyEntry, ProxyPoolConfig, ProxySelectionStrategy, UpstreamProxyConfig};
 use dashmap::DashMap;
 use futures::{stream, StreamExt};
 use rquest::Client;
@@ -19,8 +19,8 @@ pub fn get_global_proxy_pool() -> Option<Arc<ProxyPoolManager>> {
 }
 
 /// 初始化全局代理池管理器
-pub fn init_global_proxy_pool(config: Arc<RwLock<ProxyPoolConfig>>) -> Arc<ProxyPoolManager> {
-    let manager = Arc::new(ProxyPoolManager::new(config));
+pub fn init_global_proxy_pool(config: Arc<RwLock<ProxyPoolConfig>>, upstream_proxy: Arc<RwLock<UpstreamProxyConfig>>) -> Arc<ProxyPoolManager> {
+    let manager = Arc::new(ProxyPoolManager::new(config, Some(upstream_proxy)));
     let _ = GLOBAL_PROXY_POOL.set(manager.clone());
     manager
 }
@@ -37,6 +37,9 @@ pub struct PoolProxyConfig {
 pub struct ProxyPoolManager {
     config: Arc<RwLock<ProxyPoolConfig>>,
 
+    /// 上游代理配置 (可选，用于 fallback)
+    upstream_proxy: Option<Arc<RwLock<UpstreamProxyConfig>>>,
+
     /// 代理使用计数 (proxy_id -> count)
     usage_counter: Arc<DashMap<String, usize>>,
 
@@ -48,7 +51,7 @@ pub struct ProxyPoolManager {
 }
 
 impl ProxyPoolManager {
-    pub fn new(config: Arc<RwLock<ProxyPoolConfig>>) -> Self {
+    pub fn new(config: Arc<RwLock<ProxyPoolConfig>>, upstream_proxy: Option<Arc<RwLock<UpstreamProxyConfig>>>) -> Self {
         // 从配置中加载已保存的绑定关系
         let account_bindings = Arc::new(DashMap::new());
 
@@ -68,6 +71,7 @@ impl ProxyPoolManager {
 
         Self {
             config,
+            upstream_proxy,
             usage_counter: Arc::new(DashMap::new()),
             account_bindings,
             round_robin_index: Arc::new(AtomicUsize::new(0)),
@@ -115,31 +119,30 @@ impl ProxyPoolManager {
         if let Some(proxy_cfg) = proxy_opt {
             builder = builder.proxy(proxy_cfg.proxy);
             // Already logged more detail in get_proxy_for_account or pool selection
-        } else {
-            // Fallback 到应用配置的单上游代理
-            if let Ok(app_cfg) = crate::modules::config::load_app_config() {
-                let up = app_cfg.proxy.upstream_proxy;
-                if up.enabled && !up.url.is_empty() {
-                    if let Ok(p) = rquest::Proxy::all(&up.url) {
-                        tracing::info!(
-                            "[Proxy] Route: {:?} -> Upstream: {} (AppConfig)",
-                            account_id.unwrap_or("Generic"),
-                            up.url
-                        );
-                        builder = builder.proxy(p);
-                    }
-                } else {
+        } else if let Some(ref upstream) = self.upstream_proxy {
+            // Fallback 到应用配置的单上游代理 (从内存读取)
+            let up = upstream.read().await;
+            if up.enabled && !up.url.is_empty() {
+                let url = crate::proxy::config::normalize_proxy_url(&up.url);
+                if let Ok(p) = rquest::Proxy::all(&url) {
                     tracing::info!(
-                        "[Proxy] Route: {:?} -> Direct",
-                        account_id.unwrap_or("Generic")
+                        "[Proxy] Route: {:?} -> Upstream: {} (InMemory)",
+                        account_id.unwrap_or("Generic"),
+                        url
                     );
+                    builder = builder.proxy(p);
                 }
             } else {
-                tracing::warn!(
-                    "[Proxy] Route: {:?} -> Failed to load app config — request will go direct",
+                tracing::info!(
+                    "[Proxy] Route: {:?} -> Direct",
                     account_id.unwrap_or("Generic")
                 );
             }
+        } else {
+            tracing::info!(
+                "[Proxy] Route: {:?} -> Direct (no upstream proxy configured)",
+                account_id.unwrap_or("Generic")
+            );
         }
 
         builder.build().unwrap_or_else(|_| Client::new())
@@ -182,31 +185,30 @@ impl ProxyPoolManager {
 
         if let Some(proxy_cfg) = proxy_opt {
             builder = builder.proxy(proxy_cfg.proxy);
-        } else {
-            // Fallback 到应用配置的单上游代理
-            if let Ok(app_cfg) = crate::modules::config::load_app_config() {
-                let up = app_cfg.proxy.upstream_proxy;
-                if up.enabled && !up.url.is_empty() {
-                    if let Ok(p) = rquest::Proxy::all(&up.url) {
-                        tracing::info!(
-                            "[Proxy] Route: {:?} (Standard Client) -> Upstream: {} (AppConfig)",
-                            account_id.unwrap_or("Generic"),
-                            up.url
-                        );
-                        builder = builder.proxy(p);
-                    }
-                } else {
+        } else if let Some(ref upstream) = self.upstream_proxy {
+            // Fallback 到应用配置的单上游代理 (从内存读取)
+            let up = upstream.read().await;
+            if up.enabled && !up.url.is_empty() {
+                let url = crate::proxy::config::normalize_proxy_url(&up.url);
+                if let Ok(p) = rquest::Proxy::all(&url) {
                     tracing::info!(
-                        "[Proxy] Route: {:?} (Standard Client) -> Direct",
-                        account_id.unwrap_or("Generic")
+                        "[Proxy] Route: {:?} (Standard Client) -> Upstream: {} (InMemory)",
+                        account_id.unwrap_or("Generic"),
+                        url
                     );
+                    builder = builder.proxy(p);
                 }
             } else {
-                tracing::warn!(
-                    "[Proxy] Route: {:?} (Standard Client) -> Failed to load app config — request will go direct",
+                tracing::info!(
+                    "[Proxy] Route: {:?} (Standard Client) -> Direct",
                     account_id.unwrap_or("Generic")
                 );
             }
+        } else {
+            tracing::info!(
+                "[Proxy] Route: {:?} (Standard Client) -> Direct (no upstream proxy configured)",
+                account_id.unwrap_or("Generic")
+            );
         }
 
         builder.build().unwrap_or_else(|_| Client::new())

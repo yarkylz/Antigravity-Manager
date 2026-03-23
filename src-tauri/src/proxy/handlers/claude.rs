@@ -569,6 +569,7 @@ pub async fn handle_messages(
 
     // 2. 获取 UpstreamClient
     let upstream = state.upstream.clone();
+    let upstream_proxy = state.upstream_proxy.clone();
 
     // 3. 准备闭包
     let mut request_for_body = request.clone();
@@ -811,6 +812,7 @@ pub async fn handle_messages(
                     &request_with_mapped,
                     &trace_id,
                     &token_manager_clone,
+                    &upstream_proxy,
                 )
                 .await
                 {
@@ -2023,6 +2025,7 @@ async fn call_gemini_sync(
     request: &ClaudeRequest,
     token_manager: &Arc<crate::proxy::TokenManager>,
     trace_id: &str,
+    upstream_proxy: &Arc<tokio::sync::RwLock<crate::proxy::config::UpstreamProxyConfig>>,
 ) -> Result<String, String> {
     // Get token and transform request
     let (access_token, project_id, _, account_id, _wait_ms) = token_manager
@@ -2049,21 +2052,17 @@ async fn call_gemini_sync(
 
     debug!("[{}] Calling Gemini API: {}", trace_id, model);
 
-    // Build proxy-aware client using upstream proxy config (fixes proxy bypass bug)
+    // Build proxy-aware client using upstream proxy config (from in-memory state)
     let client = {
         let mut builder = reqwest::Client::builder()
             .timeout(Duration::from_secs(120));
-        if let Ok(app_cfg) = crate::modules::config::load_app_config() {
-            let up = app_cfg.proxy.upstream_proxy;
-            if up.enabled && !up.url.is_empty() {
-                let url = crate::proxy::config::normalize_proxy_url(&up.url);
-                if let Ok(proxy) = reqwest::Proxy::all(&url) {
-                    builder = builder.proxy(proxy);
-                    debug!("[{}] Gemini call using upstream proxy: {}", trace_id, url);
-                }
+        let up = upstream_proxy.read().await;
+        if up.enabled && !up.url.is_empty() {
+            let url = crate::proxy::config::normalize_proxy_url(&up.url);
+            if let Ok(proxy) = reqwest::Proxy::all(&url) {
+                builder = builder.proxy(proxy);
+                debug!("[{}] Gemini call using upstream proxy: {}", trace_id, url);
             }
-        } else {
-            tracing::warn!("[{}] Failed to load app config for Gemini proxy — request will go direct", trace_id);
         }
         builder.build().unwrap_or_else(|_| reqwest::Client::new())
     };
@@ -2121,6 +2120,7 @@ async fn try_compress_with_summary(
     original_request: &ClaudeRequest,
     trace_id: &str,
     token_manager: &Arc<crate::proxy::TokenManager>,
+    upstream_proxy: &Arc<tokio::sync::RwLock<crate::proxy::config::UpstreamProxyConfig>>,
 ) -> Result<ClaudeRequest, String> {
     info!(
         "[{}] [Layer-3] Starting context compression with XML summary",
@@ -2185,6 +2185,7 @@ async fn try_compress_with_summary(
         &summary_request,
         token_manager,
         trace_id,
+        upstream_proxy,
     )
     .await?;
 

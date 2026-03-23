@@ -317,7 +317,7 @@ impl AxumServer {
         let proxy_state = Arc::new(tokio::sync::RwLock::new(upstream_proxy.clone()));
         let proxy_pool_state = Arc::new(tokio::sync::RwLock::new(proxy_pool_config));
         let proxy_pool_manager =
-            crate::proxy::proxy_pool::init_global_proxy_pool(proxy_pool_state.clone());
+            crate::proxy::proxy_pool::init_global_proxy_pool(proxy_pool_state.clone(), proxy_state.clone());
 
         // Start health check loop
         proxy_pool_manager.clone().start_health_check_loop();
@@ -877,6 +877,7 @@ async fn admin_list_accounts(
                 last_updated: q.last_updated,
                 subscription_tier: q.subscription_tier,
                 is_forbidden: q.is_forbidden,
+                restriction_reason: q.restriction_reason,
             });
 
             AccountResponse {
@@ -897,6 +898,9 @@ async fn admin_list_accounts(
                 quota,
                 device_bound: acc.device_profile.is_some(),
                 last_used: acc.last_used,
+                custom_label: acc.custom_label,
+                proxy_id: acc.proxy_id,
+                proxy_bound_at: acc.proxy_bound_at,
             }
         })
         .collect();
@@ -954,6 +958,7 @@ async fn admin_get_current_account(
                 last_updated: q.last_updated,
                 subscription_tier: q.subscription_tier,
                 is_forbidden: q.is_forbidden,
+                restriction_reason: q.restriction_reason,
             });
 
             AccountResponse {
@@ -974,6 +979,9 @@ async fn admin_get_current_account(
                 quota,
                 device_bound: acc.device_profile.is_some(),
                 last_used: acc.last_used,
+                custom_label: acc.custom_label,
+                proxy_id: acc.proxy_id,
+                proxy_bound_at: acc.proxy_bound_at,
             }
         })
     } else {

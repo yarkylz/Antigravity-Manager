@@ -105,14 +105,15 @@ pub async fn add_account(
                         }
                     }
                     Err(e) => {
-                        modules::logger::log_error(&format!(
-                            "Failed to bind proxy {} to account {}: {}",
-                            pid, account.id, e
-                        ));
-                        return Err(format!(
-                            "Account added successfully but proxy binding failed: {}",
-                            e
-                        ));
+                        tracing::warn!(
+                            proxy_id = %pid,
+                            account_id = %account.id,
+                            error = %e,
+                            "Proxy binding failed after account was saved — account will appear without proxy"
+                        );
+                        // Do NOT return Err here: the account is already persisted to disk.
+                        // Returning Err would cause the frontend to skip fetchAccounts(),
+                        // creating a phantom account (exists on disk but invisible in UI).
                     }
                 }
             }

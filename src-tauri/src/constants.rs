@@ -77,9 +77,10 @@ fn try_fetch_remote_version() -> Option<String> {
             if let Ok(app_cfg) = crate::modules::config::load_app_config() {
                 let up = app_cfg.proxy.upstream_proxy;
                 if up.enabled && !up.url.is_empty() {
-                    if let Ok(proxy) = reqwest::Proxy::all(&up.url) {
+                    let url = crate::proxy::config::normalize_proxy_url(&up.url);
+                    if let Ok(proxy) = reqwest::Proxy::all(&url) {
                         builder = builder.proxy(proxy);
-                        tracing::debug!(proxy_url = %up.url, "Version check using upstream proxy");
+                        tracing::debug!(proxy_url = %url, "Version check using upstream proxy");
                     }
                 }
             }

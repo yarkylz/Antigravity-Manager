@@ -1047,6 +1047,7 @@ pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Resul
             stage,
             subscription_tier,
             restriction_reason,
+            validation_url,
         } => {
             // Google accepted the request (done=true) but didn't return a project_id.
             // Use a random fallback — project_id is just a routing hint, auth is via Bearer token.
@@ -1061,6 +1062,7 @@ pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Resul
                 project_id: fallback,
                 subscription_tier,
                 restriction_reason,
+                validation_url,
             }
         }
         modules::quota::ProjectResolutionOutcome::TransportFailure {

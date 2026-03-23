@@ -1407,6 +1407,7 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str) -> Result<(), Stri
             last_updated: chrono::Utc::now().timestamp(),
             subscription_tier: None,
             restriction_reason: None,
+            validation_url: None,
             is_forbidden: true,
             forbidden_reason: Some(reason.to_string()),
             model_forwarding_rules: std::collections::HashMap::new(),

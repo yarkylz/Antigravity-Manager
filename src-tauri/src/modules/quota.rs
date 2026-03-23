@@ -282,7 +282,11 @@ fn extract_project_id_from_value(value: &serde_json::Value) -> Option<String> {
 fn response_preview(body: &str, max_len: usize) -> String {
     let trimmed = body.trim();
     if trimmed.len() > max_len {
-        trimmed[..max_len].to_string()
+        // Use char_indices to find a safe UTF-8 boundary
+        match trimmed.char_indices().nth(max_len) {
+            Some((byte_pos, _)) => trimmed[..byte_pos].to_string(),
+            None => trimmed.to_string(),
+        }
     } else {
         trimmed.to_string()
     }

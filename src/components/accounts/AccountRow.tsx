@@ -337,44 +337,50 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
 
             {/* 操作 */}
             <td className="px-4 py-1">
-                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
+                 <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity">
                     <button
-                        className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-sky-600 dark:hover:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/30 rounded-lg transition-all"
-                        onClick={(e) => { e.stopPropagation(); onViewDetails(); }}
-                        title={t('common.details')}
-                    >
-                        <Info className="w-3.5 h-3.5" />
-                        <button
-                            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-all"
-                            onClick={(e) => { e.stopPropagation(); onViewDevice(); }}
-                            title={t('accounts.device_fingerprint')}
-                        >
-                            <Fingerprint className="w-3.5 h-3.5" />
-                        </button>
-                    </button>
+                         type="button"
+                         className={`p-1.5 text-gray-500 dark:text-gray-400 rounded-lg transition-all ${(isRefreshing || isDisabled) ? 'bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 cursor-not-allowed' : 'hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30'}`}
+                         onClick={(e) => { e.stopPropagation(); onRefresh(); }}
+                         title={isDisabled ? t('accounts.disabled_tooltip') : (isRefreshing ? t('common.refreshing') : t('common.refresh'))}
+                         disabled={isRefreshing || isDisabled}
+                     >
+                         <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                     </button>
+                     <button
+                         type="button"
+                         className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:bg-indigo-900/30 rounded-lg transition-all"
+                         onClick={(e) => { e.stopPropagation(); onViewDevice(); }}
+                         title={t('accounts.device_fingerprint')}
+                     >
+                         <Fingerprint className="w-3.5 h-3.5" />
+                     </button>
                     <button
-                        className={`p-1.5 text-gray-500 dark:text-gray-400 rounded-lg transition-all ${(isSwitching || isDisabled) ? 'bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 cursor-not-allowed' : 'hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'}`}
-                        onClick={(e) => { e.stopPropagation(); onSwitch(); }}
-                        title={isDisabled ? t('accounts.disabled_tooltip') : (isSwitching ? t('common.loading') : t('accounts.switch_to'))}
-                        disabled={isSwitching || isDisabled}
-                    >
-                        <ArrowRightLeft className={`w-3.5 h-3.5 ${isSwitching ? 'animate-spin' : ''}`} />
-                    </button>
+                         type="button"
+                         className={`p-1.5 text-gray-500 dark:text-gray-400 rounded-lg transition-all ${(isSwitching || isDisabled) ? 'bg-blue-50 dark:bg-blue-900/10 text-blue-600 dark:text-blue-400 cursor-not-allowed' : 'hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30'}`}
+                         onClick={(e) => { e.stopPropagation(); onSwitch(); }}
+                         title={isDisabled ? t('accounts.disabled_tooltip') : (isSwitching ? t('common.loading') : t('accounts.switch_to'))}
+                         disabled={isSwitching || isDisabled}
+                     >
+                         <ArrowRightLeft className={`w-3.5 h-3.5 ${isSwitching ? 'animate-spin' : ''}`} />
+                     </button>
                     <button
-                        className={`p-1.5 text-gray-500 dark:text-gray-400 rounded-lg transition-all ${(isRefreshing || isDisabled) ? 'bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 cursor-not-allowed' : 'hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30'}`}
-                        onClick={(e) => { e.stopPropagation(); onRefresh(); }}
-                        title={isDisabled ? t('accounts.disabled_tooltip') : (isRefreshing ? t('common.refreshing') : t('common.refresh'))}
-                        disabled={isRefreshing || isDisabled}
-                    >
-                        <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-                    </button>
-                    <button
-                        className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg transition-all"
-                        onClick={(e) => { e.stopPropagation(); onExport(); }}
-                        title={t('common.export')}
-                    >
-                        <Download className="w-3.5 h-3.5" />
-                    </button>
+                         type="button"
+                         className={`p-1.5 text-gray-500 dark:text-gray-400 rounded-lg transition-all ${(isRefreshing || isDisabled) ? 'bg-green-50 dark:bg-green-900/10 text-green-600 dark:text-green-400 cursor-not-allowed' : 'hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30'}`}
+                         onClick={(e) => { e.stopPropagation(); onRefresh(); }}
+                         title={isDisabled ? t('accounts.disabled_tooltip') : (isRefreshing ? t('common.refreshing') : t('common.refresh'))}
+                         disabled={isRefreshing || isDisabled}
+                     >
+                         <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+                     </button>
+                     <button
+                         type="button"
+                         className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:bg-indigo-900/30 rounded-lg transition-all"
+                         onClick={(e) => { e.stopPropagation(); onExport(); }}
+                         title={t('common.export')}
+                     >
+                         <Download className="w-3.5 h-3.5" />
+                     </button>
                     <button
                         className={cn(
                             "p-1.5 rounded-lg transition-all",
@@ -391,13 +397,14 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                             <ToggleLeft className="w-3.5 h-3.5" />
                         )}
                     </button>
-                    <button
-                        className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-all"
-                        onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                        title={t('common.delete')}
-                    >
-                        <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                     <button
+                         type="button"
+                         className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:bg-red-900/30 rounded-lg transition-all"
+                         onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                         title={t('common.delete')}
+                     >
+                         <Trash2 className="w-3.5 h-3.5" />
+                     </button>
                 </div>
             </td>
         </tr>

@@ -212,47 +212,75 @@ pub fn get_ip_access_logs(
 
     let sql = if blocked_only {
         if let Some(ip) = ip_filter {
-            format!(
-                "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
-                 FROM ip_access_logs
-                 WHERE blocked = 1 AND client_ip LIKE '%{}%'
-                 ORDER BY timestamp DESC
-                 LIMIT {} OFFSET {}",
-                ip, limit, offset
-            )
+            "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
+              FROM ip_access_logs
+              WHERE blocked = 1 AND client_ip LIKE ?1
+              ORDER BY timestamp DESC
+              LIMIT ?2 OFFSET ?3"
+                .to_string()
         } else {
-            format!(
-                "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
-                 FROM ip_access_logs
-                 WHERE blocked = 1
-                 ORDER BY timestamp DESC
-                 LIMIT {} OFFSET {}",
-                limit, offset
-            )
+            "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
+              FROM ip_access_logs
+              WHERE blocked = 1
+              ORDER BY timestamp DESC
+              LIMIT ?1 OFFSET ?2"
+                .to_string()
         }
     } else if let Some(ip) = ip_filter {
-        format!(
-            "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
-             FROM ip_access_logs
-             WHERE client_ip LIKE '%{}%'
-             ORDER BY timestamp DESC
-             LIMIT {} OFFSET {}",
-            ip, limit, offset
-        )
+        "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
+          FROM ip_access_logs
+          WHERE client_ip LIKE ?1
+          ORDER BY timestamp DESC
+          LIMIT ?2 OFFSET ?3"
+            .to_string()
     } else {
-        format!(
-            "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
-             FROM ip_access_logs
-             ORDER BY timestamp DESC
-             LIMIT {} OFFSET {}",
-            limit, offset
-        )
+        "SELECT id, client_ip, timestamp, method, path, user_agent, status, duration, api_key_hash, blocked, block_reason, username
+          FROM ip_access_logs
+          ORDER BY timestamp DESC
+          LIMIT ?1 OFFSET ?2"
+            .to_string()
     };
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
-    let logs_iter = stmt
-        .query_map([], |row| {
+    let logs_iter = if blocked_only {
+        if let Some(ip) = ip_filter {
+            stmt.query_map(params![ip, limit, offset], |row| {
+                Ok(IpAccessLog {
+                    id: row.get(0)?,
+                    client_ip: row.get(1)?,
+                    timestamp: row.get(2)?,
+                    method: row.get(3)?,
+                    path: row.get(4)?,
+                    user_agent: row.get(5)?,
+                    status: row.get(6)?,
+                    duration: row.get(7)?,
+                    api_key_hash: row.get(8)?,
+                    blocked: row.get::<_, i32>(9)? != 0,
+                    block_reason: row.get(10)?,
+                    username: row.get(11).unwrap_or(None),
+                })
+            })
+        } else {
+            stmt.query_map(params![limit, offset], |row| {
+                Ok(IpAccessLog {
+                    id: row.get(0)?,
+                    client_ip: row.get(1)?,
+                    timestamp: row.get(2)?,
+                    method: row.get(3)?,
+                    path: row.get(4)?,
+                    user_agent: row.get(5)?,
+                    status: row.get(6)?,
+                    duration: row.get(7)?,
+                    api_key_hash: row.get(8)?,
+                    blocked: row.get::<_, i32>(9)? != 0,
+                    block_reason: row.get(10)?,
+                    username: row.get(11).unwrap_or(None),
+                })
+            })
+        }
+    } else if let Some(ip) = ip_filter {
+        stmt.query_map(params![ip, limit, offset], |row| {
             Ok(IpAccessLog {
                 id: row.get(0)?,
                 client_ip: row.get(1)?,
@@ -268,7 +296,25 @@ pub fn get_ip_access_logs(
                 username: row.get(11).unwrap_or(None),
             })
         })
-        .map_err(|e| e.to_string())?;
+    } else {
+        stmt.query_map(params![limit, offset], |row| {
+            Ok(IpAccessLog {
+                id: row.get(0)?,
+                client_ip: row.get(1)?,
+                timestamp: row.get(2)?,
+                method: row.get(3)?,
+                path: row.get(4)?,
+                user_agent: row.get(5)?,
+                status: row.get(6)?,
+                duration: row.get(7)?,
+                api_key_hash: row.get(8)?,
+                blocked: row.get::<_, i32>(9)? != 0,
+                block_reason: row.get(10)?,
+                username: row.get(11).unwrap_or(None),
+            })
+        })
+    }
+    .map_err(|e| e.to_string())?;
 
     let mut logs = Vec::new();
     for log in logs_iter {
@@ -663,18 +709,13 @@ pub fn get_ip_access_logs_count(
 
     let sql = if blocked_only {
         if let Some(ip) = ip_filter {
-            format!(
-                "SELECT COUNT(*) FROM ip_access_logs WHERE blocked = 1 AND client_ip LIKE '%{}%'",
-                ip
-            )
+            "SELECT COUNT(*) FROM ip_access_logs WHERE blocked = 1 AND client_ip LIKE ?1"
+                .to_string()
         } else {
             "SELECT COUNT(*) FROM ip_access_logs WHERE blocked = 1".to_string()
         }
     } else if let Some(ip) = ip_filter {
-        format!(
-            "SELECT COUNT(*) FROM ip_access_logs WHERE client_ip LIKE '%{}%'",
-            ip
-        )
+        "SELECT COUNT(*) FROM ip_access_logs WHERE client_ip LIKE ?1".to_string()
     } else {
         "SELECT COUNT(*) FROM ip_access_logs".to_string()
     };

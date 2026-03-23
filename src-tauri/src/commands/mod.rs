@@ -37,87 +37,76 @@ pub async fn add_account(
 
     let mut account = service.add_account(&refresh_token).await?;
 
-    // Apply custom label if provided
-    if let Some(ref label) = custom_label {
-        let label = label.trim().to_string();
-        if !label.is_empty() {
-            // Validate label length (same rule as update_account_label)
-            if label.chars().count() > 15 {
-                modules::logger::log_info("Custom label too long, truncating to 15 chars");
-            }
-            let truncated: String = label.chars().take(15).collect();
-            account.custom_label = Some(truncated.clone());
+    // Apply custom label and proxy binding if provided (atomic update to avoid TOCTOU race)
+    let mut needs_persistence = false;
+    let mut account_json: Option<serde_json::Value> = None;
+    let data_dir = modules::account::get_data_dir()?;
+    let account_path = data_dir
+        .join("accounts")
+        .join(format!("{}.json", account.id));
 
-            // Persist to account JSON file
-            let data_dir = modules::account::get_data_dir()?;
-            let account_path = data_dir
-                .join("accounts")
-                .join(format!("{}.json", account.id));
-            if account_path.exists() {
-                let content = std::fs::read_to_string(&account_path)
-                    .map_err(|e| format!("Failed to read account file: {}", e))?;
-                let mut account_json: serde_json::Value = serde_json::from_str(&content)
-                    .map_err(|e| format!("Failed to parse account file: {}", e))?;
-                account_json["custom_label"] = serde_json::Value::String(truncated);
-                let json_str = serde_json::to_string_pretty(&account_json)
-                    .map_err(|e| format!("Failed to serialize account: {}", e))?;
-                std::fs::write(&account_path, json_str)
-                    .map_err(|e| format!("Failed to write account file: {}", e))?;
+    if account_path.exists() {
+        let content = std::fs::read_to_string(&account_path)
+            .map_err(|e| format!("Failed to read account file: {}", e))?;
+        let mut json = serde_json::from_str::<serde_json::Value>(&content)
+            .map_err(|e| format!("Failed to parse account file: {}", e))?;
+
+        // Apply custom label if provided
+        if let Some(ref label) = custom_label {
+            let label = label.trim().to_string();
+            if !label.is_empty() {
+                // Validate label length (same rule as update_account_label)
+                if label.chars().count() > 15 {
+                    modules::logger::log_info("Custom label too long, truncating to 15 chars");
+                }
+                let truncated: String = label.chars().take(15).collect();
+                account.custom_label = Some(truncated.clone());
+                json["custom_label"] = serde_json::Value::String(truncated);
+                needs_persistence = true;
             }
         }
-    }
 
-    // Bind proxy if provided
-    if let Some(ref pid) = proxy_id {
-        if !pid.is_empty() {
-            let proxy_state = app.state::<crate::commands::proxy::ProxyServiceState>();
-            let instance_lock = proxy_state.instance.read().await;
-            if let Some(instance) = instance_lock.as_ref() {
-                match instance
-                    .axum_server
-                    .proxy_pool_manager
-                    .bind_account_to_proxy(account.id.clone(), pid.clone())
-                    .await
-                {
-                    Ok(_) => {
-                        account.proxy_id = Some(pid.clone());
-                        account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
-
-                        // Persist proxy_id and proxy_bound_at to account JSON file
-                        let data_dir = modules::account::get_data_dir()?;
-                        let account_path = data_dir
-                            .join("accounts")
-                            .join(format!("{}.json", account.id));
-                        if account_path.exists() {
-                            let content = std::fs::read_to_string(&account_path)
-                                .map_err(|e| format!("Failed to read account file: {}", e))?;
-                            let mut account_json: serde_json::Value =
-                                serde_json::from_str(&content)
-                                    .map_err(|e| format!("Failed to parse account file: {}", e))?;
-                            account_json["proxy_id"] =
-                                serde_json::Value::String(pid.clone());
-                            account_json["proxy_bound_at"] =
-                                serde_json::json!(account.proxy_bound_at);
-                            let json_str = serde_json::to_string_pretty(&account_json)
-                                .map_err(|e| format!("Failed to serialize account: {}", e))?;
-                            std::fs::write(&account_path, json_str)
-                                .map_err(|e| format!("Failed to write account file: {}", e))?;
+        // Bind proxy if provided
+        if let Some(ref pid) = proxy_id {
+            if !pid.is_empty() {
+                let proxy_state = app.state::<crate::commands::proxy::ProxyServiceState>();
+                let instance_lock = proxy_state.instance.read().await;
+                if let Some(instance) = instance_lock.as_ref() {
+                    match instance
+                        .axum_server
+                        .proxy_pool_manager
+                        .bind_account_to_proxy(account.id.clone(), pid.clone())
+                        .await
+                    {
+                        Ok(_) => {
+                            account.proxy_id = Some(pid.clone());
+                            account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
+                            json["proxy_id"] = serde_json::Value::String(pid.clone());
+                            json["proxy_bound_at"] = serde_json::json!(account.proxy_bound_at);
+                            needs_persistence = true;
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                proxy_id = %pid,
+                                account_id = %account.id,
+                                error = %e,
+                                "Proxy binding failed after account was saved — account will appear without proxy"
+                            );
+                            // Do NOT return Err here: the account is already persisted to disk.
+                            // Returning Err would cause the frontend to skip fetchAccounts(),
+                            // creating a phantom account (exists on disk but invisible in UI).
                         }
                     }
-                    Err(e) => {
-                        tracing::warn!(
-                            proxy_id = %pid,
-                            account_id = %account.id,
-                            error = %e,
-                            "Proxy binding failed after account was saved — account will appear without proxy"
-                        );
-                        // Do NOT return Err here: the account is already persisted to disk.
-                        // Returning Err would cause the frontend to skip fetchAccounts(),
-                        // creating a phantom account (exists on disk but invisible in UI).
-                    }
+                    drop(instance_lock);
                 }
             }
-            drop(instance_lock);
+        }
+
+        if needs_persistence {
+            let json_str = serde_json::to_string_pretty(&json)
+                .map_err(|e| format!("Failed to serialize account: {}", e))?;
+            std::fs::write(&account_path, json_str)
+                .map_err(|e| format!("Failed to write account file: {}", e))?;
         }
     }
 
@@ -984,7 +973,7 @@ pub struct TestRequestResult {
 
 /// Onboard account: initialize cloud code project, refresh token, verify access
 #[tauri::command]
-pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, String> {
+pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Result<OnboardingResult, String> {
     modules::logger::log_info(&format!("Starting onboarding for account: {}", account_id));
 
     let mut account = modules::load_account(&account_id)?;
@@ -1193,6 +1182,15 @@ pub async fn onboard_account(account_id: String) -> Result<OnboardingResult, Str
                     "Onboarding completed for {}: {} models, tier: {}",
                     account.email, model_count, tier
                 ));
+
+                // [FIX #XXXX] Reload proxy token manager to use fresh tokens after onboarding
+                let proxy_state = app.state::<crate::commands::proxy::ProxyServiceState>();
+                if let Err(e) = crate::commands::proxy::reload_proxy_accounts(proxy_state).await {
+                    modules::logger::log_warn(&format!(
+                        "[Onboarding] Failed to reload proxy accounts after token refresh: {}",
+                        e
+                    ));
+                }
 
                 Ok(OnboardingResult {
                     success: true,

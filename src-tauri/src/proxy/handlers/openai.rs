@@ -455,37 +455,52 @@ pub async fn handle_chat_completions(
                     )
                     .chain(openai_stream);
 
-                if client_wants_stream {
-                    // 客户端请求流式，返回 SSE
-                    let body = Body::from_stream(combined_stream);
-                    return Ok(Response::builder()
-                        .header("Content-Type", "text/event-stream")
-                        .header("Cache-Control", "no-cache")
-                        .header("Connection", "keep-alive")
-                        .header("X-Accel-Buffering", "no")
-                        .header("X-Account-Email", &email)
-                        .header("X-Mapped-Model", &mapped_model)
-                        .body(body)
-                        .unwrap()
-                        .into_response());
+                 if client_wants_stream {
+                     // 客户端请求流式，返回 SSE
+                     let body = Body::from_stream(combined_stream);
+                     return Ok(Response::builder()
+                         .header("Content-Type", "text/event-stream")
+                         .header("Cache-Control", "no-cache")
+                         .header("Connection", "keep-alive")
+                         .header("X-Accel-Buffering", "no")
+                         .header("X-Account-Email", &email)
+                     .header("X-Mapped-Model", &mapped_model)
+                     .body(body)
+                     .unwrap_or_else(|e| {
+                         error!("Failed to build streaming response: {}", e);
+                         Response::builder()
+                             .status(StatusCode::INTERNAL_SERVER_ERROR)
+                             .header("Content-Type", "application/json")
+                             .body(Body::from(
+                                 serde_json::to_string(&serde_json::json!({
+                                     "error": {
+                                         "message": "Internal server error",
+                                         "type": "internal_error",
+                                         "code": "internal_error"
+                                     }
+                                 })).unwrap()
+                             ))
+                             .unwrap()
+                     })
+                     .into_response());
                 } else {
                     // 客户端请求非流式，但内部强制转为流式
                     // 收集流数据并聚合为 JSON
                     use crate::proxy::mappers::openai::collector::collect_stream_to_json;
 
-                    match collect_stream_to_json(Box::pin(combined_stream)).await {
-                        Ok(full_response) => {
-                            info!("[{}] ✓ Stream collected and converted to JSON", trace_id);
-                            return Ok((
-                                StatusCode::OK,
-                                [
-                                    ("X-Account-Email", email.as_str()),
-                                    ("X-Mapped-Model", mapped_model.as_str()),
-                                ],
-                                Json(full_response),
-                            )
-                                .into_response());
-                        }
+                     match collect_stream_to_json(Box::pin(combined_stream)).await {
+                         Ok(full_response) => {
+                             info!("[{}] ✓ Stream collected and converted to JSON", trace_id);
+                             return Ok((
+                                 StatusCode::OK,
+                                 [
+                                     ("X-Account-Email", email.as_str()),
+                                     ("X-Mapped-Model", mapped_model.as_str()),
+                                 ],
+                                 Json(full_response),
+                             ))
+                                 .into_response();
+                         }
                         Err(e) => {
                             error!("[{}] Stream collection error: {}", trace_id, e);
                             return Ok((

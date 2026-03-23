@@ -1108,8 +1108,13 @@ async fn admin_add_account(
 
     // Auto-refresh quota for new account (Web mode equivalent of internal_refresh_account_quota)
     if let Ok(data_dir) = crate::modules::account::get_data_dir() {
-        match crate::modules::quota::fetch_quota_with_cache(&account, &data_dir, true).await {
-            Ok(quota) => {
+        match crate::modules::quota::fetch_quota_with_cache(
+            &account.token.access_token,
+            &account.email,
+            None,
+            Some(&account.id),
+        ).await {
+            Ok((quota, _project_id)) => {
                 account.quota = Some(quota);
                 // Persist updated quota to account JSON
                 let account_path = data_dir

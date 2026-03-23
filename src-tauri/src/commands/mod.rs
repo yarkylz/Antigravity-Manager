@@ -1273,28 +1273,49 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                     .subscription_tier
                     .clone()
                     .unwrap_or_else(|| "Unknown".to_string());
+                
+                // Check if account is restricted (has restriction_reason)
+                if let Some(ref reason) = quota_data.restriction_reason {
+                    let _ = crate::modules::account::mark_account_forbidden(
+                        &account_id,
+                        &format!("Test request: Restricted - {}", reason),
+                    );
+                    Ok(TestRequestResult {
+                        success: false,
+                        status: "restricted".to_string(),
+                        message: format!("Account is restricted: {}", reason),
+                        requires_verification: None,
+                        verification_url: None,
+                        is_banned: Some(false),
+                        is_forbidden: Some(false),
+                        details: Some(format!(
+                            "Project: {}, Tier: {}, Models: {}, Reason: {}",
+                            project_id, tier, model_count, reason
+                        )),
+                    })
+                } else {
+                    modules::logger::log_info(&format!(
+                        "Test request successful for {}: {} models, tier: {}",
+                        account.email, model_count, tier
+                    ));
 
-                modules::logger::log_info(&format!(
-                    "Test request successful for {}: {} models, tier: {}",
-                    account.email, model_count, tier
-                ));
-
-                Ok(TestRequestResult {
-                    success: true,
-                    status: "active".to_string(),
-                    message: format!(
-                        "Account is active. {} models available. Tier: {}",
-                        model_count, tier
-                    ),
-                    requires_verification: Some(false),
-                    verification_url: None,
-                    is_banned: Some(false),
-                    is_forbidden: Some(false),
-                    details: Some(format!(
-                        "Project: {}, Tier: {}, Models: {}",
-                        project_id, tier, model_count
-                    )),
-                })
+                    Ok(TestRequestResult {
+                        success: true,
+                        status: "active".to_string(),
+                        message: format!(
+                            "Account is active. {} models available. Tier: {}",
+                            model_count, tier
+                        ),
+                        requires_verification: Some(false),
+                        verification_url: None,
+                        is_banned: Some(false),
+                        is_forbidden: Some(false),
+                        details: Some(format!(
+                            "Project: {}, Tier: {}, Models: {}",
+                            project_id, tier, model_count
+                        )),
+                    })
+                }
             }
         }
         Err(e) => {

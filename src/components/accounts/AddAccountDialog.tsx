@@ -644,7 +644,7 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                                         </p>
                                     </div>
 
-                                    {/* Optional: Tag + Proxy */}
+                                    {/* Optional: Tag + Proxy - available for all tabs */}
                                     <div className="grid grid-cols-2 gap-3">
                                         {/* Custom Label / Tag */}
                                         <div>
@@ -689,13 +689,6 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                                             </div>
                                         </div>
                                     </div>
-                                    {/* Hint: tag/proxy only apply to single-token adds */}
-                                    {(customLabel.trim() || selectedProxyId) && (refreshToken.match(/1\/\//g) || []).length > 1 && (
-                                        <p className="text-[10px] text-amber-500 dark:text-amber-400 flex items-center gap-1">
-                                            <AlertTriangle className="w-3 h-3 shrink-0" />
-                                            Tag and Proxy only apply when adding a single token.
-                                        </p>
-                                    )}
                                 </div>
                             )}
 

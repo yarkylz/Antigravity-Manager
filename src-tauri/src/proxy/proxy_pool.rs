@@ -414,6 +414,16 @@ impl ProxyPoolManager {
         // 持久化到配置文件
         self.persist_bindings().await;
 
+        // [NEW] Also update account JSON file so UI can display the proxy binding
+        if let Ok(account) = crate::modules::account::load_account(&account_id) {
+            let mut updated_account = account.clone();
+            updated_account.proxy_id = Some(proxy_id.clone());
+            updated_account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
+            if let Err(e) = crate::modules::account::save_account(&updated_account) {
+                tracing::warn!("[ProxyPool] Failed to update account {} proxy_id: {}", account_id, e);
+            }
+        }
+
         tracing::info!(
             "[ProxyPool] Bound account {} to proxy {}",
             account_id,
@@ -428,6 +438,16 @@ impl ProxyPoolManager {
 
         // 持久化到配置文件
         self.persist_bindings().await;
+
+        // [NEW] Also clear proxy_id from account JSON file
+        if let Ok(account) = crate::modules::account::load_account(&account_id) {
+            let mut updated_account = account.clone();
+            updated_account.proxy_id = None;
+            updated_account.proxy_bound_at = None;
+            if let Err(e) = crate::modules::account::save_account(&updated_account) {
+                tracing::warn!("[ProxyPool] Failed to clear account {} proxy_id: {}", account_id, e);
+            }
+        }
 
         tracing::info!("[ProxyPool] Unbound account {}", account_id);
     }

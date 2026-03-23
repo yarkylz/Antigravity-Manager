@@ -124,6 +124,9 @@ pub struct AccountSummary {
     pub protected_models: HashSet<String>,
     pub created_at: i64,
     pub last_used: i64,
+    /// 绑定的代理 ID [NEW]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proxy_id: Option<String>,
 }
 
 impl AccountIndex {

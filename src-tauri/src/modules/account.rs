@@ -257,6 +257,7 @@ mod tests {
                     protected_models: HashSet::new(),
                     created_at: now,
                     last_used: now,
+                    proxy_id: None,
                 },
                 AccountSummary {
                     id: "acc-2".to_string(),
@@ -267,6 +268,7 @@ mod tests {
                     protected_models: HashSet::new(),
                     created_at: now - 100,
                     last_used: now - 50,
+                    proxy_id: None,
                 },
             ],
             current_account_id: Some("acc-1".to_string()),
@@ -521,6 +523,7 @@ fn rebuild_index_from_accounts_in_dir(data_dir: &PathBuf) -> Result<AccountIndex
                                     protected_models: account.protected_models,
                                     created_at: account.created_at,
                                     last_used: account.last_used,
+                                    proxy_id: account.proxy_id,
                                 });
                             }
                             Err(e) => {
@@ -783,6 +786,7 @@ pub fn add_account(
         protected_models: account.protected_models.clone(),
         created_at: account.created_at,
         last_used: account.last_used,
+        proxy_id: account.proxy_id.clone(),
     });
 
     // If first account, set as current
@@ -1390,6 +1394,9 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str) -> Result<(), Stri
 
     let mut account = load_account(account_id)?;
 
+    // [NEW] Extract validation_url/appeal_url from the reason if present
+    let extracted_validation_url = extract_validation_url_from_reason(reason);
+
     // 1. Update quota status
     if let Some(ref mut q) = account.quota {
         q.is_forbidden = true;
@@ -1411,6 +1418,11 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str) -> Result<(), Stri
     account.proxy_disabled_reason = Some(format!("Forbidden (403): {}", reason));
     account.proxy_disabled_at = Some(chrono::Utc::now().timestamp());
 
+    // [NEW] Set validation_url if extracted from reason
+    if let Some(url) = extracted_validation_url {
+        account.validation_url = Some(url);
+    }
+
     save_account(&account)?;
 
     // 3. Update index summary
@@ -1424,6 +1436,41 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str) -> Result<(), Stri
     crate::modules::log_bridge::emit_accounts_refreshed();
 
     Ok(())
+}
+
+/// Extract validation_url or appeal_url from error reason string
+fn extract_validation_url_from_reason(reason: &str) -> Option<String> {
+    // Try JSON parsing first
+    if let Ok(parsed_json) = serde_json::from_str::<serde_json::Value>(reason) {
+        if let Some(details) = parsed_json.pointer("/error/details") {
+            if let Some(arr) = details.as_array() {
+                for detail in arr {
+                    if let Some(meta) = detail.get("metadata") {
+                        if let Some(v_url) = meta.get("validation_url").and_then(|v| v.as_str()) {
+                            return Some(v_url.to_string());
+                        }
+                        if let Some(a_url) = meta.get("appeal_url").and_then(|v| v.as_str()) {
+                            return Some(a_url.to_string());
+                        }
+                    }
+                }
+            }
+        }
+        // Also check top-level fields
+        if let Some(v_url) = parsed_json.get("validation_url").and_then(|v| v.as_str()) {
+            return Some(v_url.to_string());
+        }
+        if let Some(a_url) = parsed_json.get("appeal_url").and_then(|v| v.as_str()) {
+            return Some(a_url.to_string());
+        }
+    }
+
+    // Fallback: regex extraction
+    let url_regex = regex::Regex::new(r#"https://[^\s"'\\]+"#).unwrap();
+    url_regex.find(reason).map(|m| {
+        let raw_url = m.as_str().to_string();
+        raw_url.replace("\\u0026", "&")
+    })
 }
 
 /// Export accounts by IDs (for backup/migration)

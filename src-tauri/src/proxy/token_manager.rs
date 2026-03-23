@@ -750,10 +750,12 @@ impl TokenManager {
 
     /// 计算账号的最大剩余配额百分比（用于排序）
     /// 返回值: Option<i32> (max_percentage)
+    /// - Some(-1) 表示配额为空（无模型数据）
+    /// - Some(0..=100) 表示有模型数据
     fn calculate_quota_stats(&self, quota: &serde_json::Value) -> Option<i32> {
         let models = match quota.get("models").and_then(|m| m.as_array()) {
-            Some(m) => m,
-            None => return None,
+            Some(m) if !m.is_empty() => m,
+            _ => return Some(-1), // 返回 -1 表示空配额
         };
 
         let mut max_percentage = 0;
@@ -772,7 +774,7 @@ impl TokenManager {
         if has_data {
             Some(max_percentage)
         } else {
-            None
+            Some(-1) // 所有模型都没有 percentage 数据，视为空配额
         }
     }
 
@@ -1063,16 +1065,23 @@ impl TokenManager {
     ) -> Option<&'a ProxyToken> {
         use rand::Rng;
 
-        // 过滤可用 token
+        // 过滤可用 token: 排除已尝试的、受配额保护的、以及空配额的账号
+        // remaining_quota = Some(-1) 表示空配额（无模型数据）
         let available: Vec<&ProxyToken> = candidates
             .iter()
             .filter(|t| !attempted.contains(&t.account_id))
             .filter(|t| {
+                // 配额保护检查
                 !quota_protection_enabled || !t.protected_models.contains(normalized_target)
+            })
+            .filter(|t| {
+                // 排除空配额账号（-1 表示无模型数据）
+                t.remaining_quota.unwrap_or(-1) != -1
             })
             .collect();
 
         if available.is_empty() {
+            tracing::warn!("[P2C] No available accounts after filtering (tried {}, quota_protection={}, empty_quota_filtered)", attempted.len(), quota_protection_enabled);
             return None;
         }
         if available.len() == 1 {

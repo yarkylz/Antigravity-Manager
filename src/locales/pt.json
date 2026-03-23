@@ -118,6 +118,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "GRÁTIS",
+        "restricted": "Restrito",
         "edit_label": "Editar rótulo",
         "custom_label_placeholder": "Digite um rótulo personalizado",
         "label_updated": "Rótulo atualizado",

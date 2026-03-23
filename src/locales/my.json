@@ -117,6 +117,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "PERCUMA",
+        "restricted": "Terhad",
         "edit_label": "Sunting Label",
         "custom_label_placeholder": "Masukkan label tersuai",
         "label_updated": "Label dikemas kini",

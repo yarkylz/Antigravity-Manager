@@ -120,6 +120,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "FREE",
+        "restricted": "제한됨",
         "edit_label": "라벨 편집",
         "custom_label_placeholder": "사용자 정의 라벨 입력",
         "label_updated": "라벨이 업데이트되었습니다",

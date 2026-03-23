@@ -121,6 +121,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "FREE",
+        "restricted": "受限",
         "edit_label": "編輯標籤",
         "custom_label_placeholder": "輸入自訂標籤",
         "label_updated": "標籤已更新",

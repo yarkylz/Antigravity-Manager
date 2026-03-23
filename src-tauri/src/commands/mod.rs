@@ -109,6 +109,10 @@ pub async fn add_account(
                             "Failed to bind proxy {} to account {}: {}",
                             pid, account.id, e
                         ));
+                        return Err(format!(
+                            "Account added successfully but proxy binding failed: {}",
+                            e
+                        ));
                     }
                 }
             }

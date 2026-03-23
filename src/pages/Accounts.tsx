@@ -304,7 +304,7 @@ function Accounts() {
       ).length,
       free: searchedAccounts.filter((a) => {
         const tier = a.quota?.subscription_tier?.toLowerCase();
-        return tier && !tier.includes("pro") && !tier.includes("ultra");
+        return tier && !tier.includes("pro") && !tier.includes("ultra") && !a.quota?.restriction_reason;
       }).length,
       restricted: searchedAccounts.filter((a) => !!a.quota?.restriction_reason).length,
     };
@@ -325,7 +325,7 @@ function Accounts() {
     } else if (filter === "free") {
       result = result.filter((a) => {
         const tier = a.quota?.subscription_tier?.toLowerCase();
-        return tier && !tier.includes("pro") && !tier.includes("ultra");
+        return tier && !tier.includes("pro") && !tier.includes("ultra") && !a.quota?.restriction_reason;
       });
     } else if (filter === "restricted") {
       result = result.filter((a) => !!a.quota?.restriction_reason);
@@ -973,10 +973,10 @@ function Accounts() {
                 : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
             )}
             onClick={() => setFilter('restricted')}
-            title={`Restricted (${filterCounts.restricted})`}
+            title={`${t('accounts.restricted')} (${filterCounts.restricted})`}
           >
             <AlertTriangle className="w-3 h-3" />
-            <span className="hidden md:inline">Restricted</span>
+            <span className="hidden md:inline">{t('accounts.restricted')}</span>
             <span className={cn(
               "px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-colors",
               filter === 'restricted'

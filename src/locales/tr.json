@@ -118,6 +118,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "ÜCRETSİZ",
+        "restricted": "Kısıtlı",
         "edit_label": "Etiketi Düzenle",
         "custom_label_placeholder": "Özel etiket girin",
         "label_updated": "Etiket güncellendi",

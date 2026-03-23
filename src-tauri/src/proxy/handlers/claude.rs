@@ -2062,6 +2062,8 @@ async fn call_gemini_sync(
                     debug!("[{}] Gemini call using upstream proxy: {}", trace_id, url);
                 }
             }
+        } else {
+            tracing::warn!("[{}] Failed to load app config for Gemini proxy — request will go direct", trace_id);
         }
         builder.build().unwrap_or_else(|_| reqwest::Client::new())
     };

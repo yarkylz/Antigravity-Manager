@@ -134,13 +134,18 @@ impl ProxyPoolManager {
                         account_id.unwrap_or("Generic")
                     );
                 }
+            } else {
+                tracing::warn!(
+                    "[Proxy] Route: {:?} -> Failed to load app config — request will go direct",
+                    account_id.unwrap_or("Generic")
+                );
             }
         }
 
         builder.build().unwrap_or_else(|_| Client::new())
     }
 
-    /// [NEW] 为指定账号获取“最终生效”的无特征 Standard HttpClient (专门用于纯净场景，如 OAuth 退还)
+    /// [NEW] 为指定账号获取"最终生效"的无特征 Standard HttpClient (专门用于纯净场景，如 OAuth 退还)
     pub async fn get_effective_standard_client(
         &self,
         account_id: Option<&str>,
@@ -196,6 +201,11 @@ impl ProxyPoolManager {
                         account_id.unwrap_or("Generic")
                     );
                 }
+            } else {
+                tracing::warn!(
+                    "[Proxy] Route: {:?} (Standard Client) -> Failed to load app config — request will go direct",
+                    account_id.unwrap_or("Generic")
+                );
             }
         }
 

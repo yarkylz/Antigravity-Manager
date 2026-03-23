@@ -119,6 +119,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "FREE",
+        "restricted": "مقيّد",
         "edit_label": "تعديل التصنيف",
         "custom_label_placeholder": "أدخل تصنيفًا مخصصًا",
         "label_updated": "تم تحديث التصنيف",

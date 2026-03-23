@@ -146,6 +146,9 @@ struct AccountResponse {
     quota: Option<QuotaResponse>,
     device_bound: bool,
     last_used: i64,
+    custom_label: Option<String>,
+    proxy_id: Option<String>,
+    proxy_bound_at: Option<i64>,
 }
 
 #[derive(Serialize)]
@@ -154,6 +157,7 @@ struct QuotaResponse {
     last_updated: i64,
     subscription_tier: Option<String>,
     is_forbidden: bool,
+    restriction_reason: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -198,9 +202,13 @@ fn to_account_response(
             last_updated: q.last_updated,
             subscription_tier: q.subscription_tier.clone(),
             is_forbidden: q.is_forbidden,
+            restriction_reason: q.restriction_reason.clone(),
         }),
         device_bound: account.device_profile.is_some(),
         last_used: account.last_used,
+        custom_label: account.custom_label.clone(),
+        proxy_id: account.proxy_id.clone(),
+        proxy_bound_at: account.proxy_bound_at,
         validation_blocked: account.validation_blocked,
         validation_blocked_until: account.validation_blocked_until,
         validation_blocked_reason: account.validation_blocked_reason.clone(),
@@ -1088,6 +1096,37 @@ async fn admin_add_account(
             "[API] Failed to reload accounts after adding: {}",
             e
         ));
+    }
+
+    // Auto-refresh quota for new account (Web mode equivalent of internal_refresh_account_quota)
+    if let Ok(data_dir) = crate::modules::account::get_data_dir() {
+        match crate::modules::quota::fetch_quota_with_cache(&account, &data_dir, true).await {
+            Ok(quota) => {
+                account.quota = Some(quota);
+                // Persist updated quota to account JSON
+                let account_path = data_dir
+                    .join("accounts")
+                    .join(format!("{}.json", account.id));
+                if let Ok(content) = std::fs::read_to_string(&account_path) {
+                    if let Ok(mut account_json) =
+                        serde_json::from_str::<serde_json::Value>(&content)
+                    {
+                        if let Ok(quota_val) = serde_json::to_value(&account.quota) {
+                            account_json["quota"] = quota_val;
+                            if let Ok(json_str) = serde_json::to_string_pretty(&account_json) {
+                                let _ = std::fs::write(&account_path, json_str);
+                            }
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                logger::log_error(&format!(
+                    "[API] Failed to auto-refresh quota for new account {}: {}",
+                    account.id, e
+                ));
+            }
+        }
     }
 
     let current_id = state.account_service.get_current_id().map_err(|e| {

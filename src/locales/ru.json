@@ -120,6 +120,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "FREE",
+        "restricted": "Ограничен",
         "edit_label": "Редактировать метку",
         "custom_label_placeholder": "Введите пользовательскую метку",
         "label_updated": "Метка обновлена",

@@ -70,10 +70,21 @@ fn try_fetch_remote_version() -> Option<String> {
 
     std::thread::spawn(move || {
         let result = (|| -> Option<String> {
-            let client = reqwest::blocking::Client::builder()
-                .timeout(std::time::Duration::from_secs(5))
-                .build()
-                .ok()?;
+            let mut builder =
+                reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(5));
+
+            // Apply upstream proxy if configured
+            if let Ok(app_cfg) = crate::modules::config::load_app_config() {
+                let up = app_cfg.proxy.upstream_proxy;
+                if up.enabled && !up.url.is_empty() {
+                    if let Ok(proxy) = reqwest::Proxy::all(&up.url) {
+                        builder = builder.proxy(proxy);
+                        tracing::debug!(proxy_url = %up.url, "Version check using upstream proxy");
+                    }
+                }
+            }
+
+            let client = builder.build().ok()?;
 
             // 1. Try primary update URL
             if let Ok(resp) = client.get(VERSION_URL).send() {

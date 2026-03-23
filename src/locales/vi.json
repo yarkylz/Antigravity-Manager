@@ -120,6 +120,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "MIỄN PHÍ",
+        "restricted": "Bị hạn chế",
         "edit_label": "Chỉnh sửa nhãn",
         "custom_label_placeholder": "Nhập nhãn tùy chỉnh",
         "label_updated": "Đã cập nhật nhãn",

@@ -117,6 +117,7 @@
         "ultra": "ULTRA",
         "pro": "PRO",
         "free": "GRATIS",
+        "restricted": "Restringido",
         "edit_label": "Editar etiqueta",
         "custom_label_placeholder": "Ingrese etiqueta personalizada",
         "label_updated": "Etiqueta actualizada",

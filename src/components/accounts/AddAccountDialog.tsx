@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Database, Globe, FileClock, Loader2, CheckCircle2, XCircle, Copy, Check, Info, Link2, Tag, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Plus, Database, Globe, FileClock, Loader2, CheckCircle2, XCircle, Copy, Check, Info, Link2, Tag, ChevronDown } from 'lucide-react';
 import { useAccountStore } from '../../stores/useAccountStore';
 import { useConfigStore } from '../../stores/useConfigStore';
 import { useTranslation } from 'react-i18next';

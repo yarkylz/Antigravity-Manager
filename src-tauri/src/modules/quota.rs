@@ -928,7 +928,7 @@ pub async fn get_valid_token_for_warmup(
         pid
     } else {
         // Step 2: Fetch from API (loadCodeAssist → onboardUser)
-        let (project_id, _) = fetch_project_id(
+        let (project_id, _, _) = fetch_project_id(
             &account.token.access_token,
             &account.email,
             Some(&account.id),

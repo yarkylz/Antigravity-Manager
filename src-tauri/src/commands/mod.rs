@@ -125,7 +125,7 @@ pub async fn add_account(
 /// Apply custom_label and proxy_id to an account after creation
 async fn apply_account_metadata(
     app: &tauri::AppHandle,
-    account: &mut modules::account::Account,
+    account: &mut crate::models::Account,
     custom_label: Option<String>,
     proxy_id: Option<String>,
 ) -> Result<(), String> {
@@ -162,6 +162,7 @@ async fn apply_account_metadata(
                         .axum_server
                         .proxy_pool_manager
                         .bind_account_to_proxy(account.id.clone(), pid.clone())
+                        .await
                     {
                         Ok(_) => {
                             account.proxy_id = Some(pid.clone());
@@ -737,7 +738,7 @@ pub async fn sync_account_from_db(
     }
 
     // 4. 执行完整导入
-    let account = import_from_db(app, proxy_state).await?;
+    let account = import_from_db(app, proxy_state, None, None).await?;
     Ok(Some(account))
 }
 

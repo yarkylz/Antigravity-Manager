@@ -38,6 +38,7 @@ export default function AccountDetailsDialog({ account, onClose }: AccountDetail
                             </>
                         ) : account.quota?.subscription_tier && (
                             <div className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${account.quota.subscription_tier.toLowerCase().includes('ultra') ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' :
+                                account.quota.subscription_tier.toLowerCase().includes('restricted') ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                                 account.quota.subscription_tier.toLowerCase().includes('pro') ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-gray-100 text-gray-600 dark:bg-base-300 dark:text-gray-400'
                                 }`}>
                                 {account.quota.subscription_tier}

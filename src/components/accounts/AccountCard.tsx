@@ -190,6 +190,13 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                             ULTRA
                                         </span>
                                     );
+                                } else if (tier.includes('restricted')) {
+                                    return (
+                                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-orange-500 to-red-500 text-white text-[9px] font-bold shadow-sm">
+                                            <Lock className="w-2.5 h-2.5 fill-current" />
+                                            Restricted
+                                        </span>
+                                    );
                                 } else if (tier.includes('pro')) {
                                     return (
                                         <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-[9px] font-bold shadow-sm">

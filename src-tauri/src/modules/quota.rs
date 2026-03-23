@@ -705,7 +705,13 @@ pub async fn fetch_quota_with_cache(
             })
             .map(|q| (q.subscription_tier, q.restriction_reason))
             .unwrap_or((None, None));
-        (Some(pid), cached_tier, cached_reason)
+        
+        // If cached tier is None, do a fresh resolution to get the subscription tier
+        if cached_tier.is_none() {
+            fetch_project_id(access_token, email, account_id).await
+        } else {
+            (Some(pid), cached_tier, cached_reason)
+        }
     } else {
         fetch_project_id(access_token, email, account_id).await
     };

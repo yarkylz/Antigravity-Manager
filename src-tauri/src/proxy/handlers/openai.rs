@@ -489,27 +489,27 @@ pub async fn handle_chat_completions(
                     use crate::proxy::mappers::openai::collector::collect_stream_to_json;
 
                      match collect_stream_to_json(Box::pin(combined_stream)).await {
-                         Ok(full_response) => {
-                             info!("[{}] ✓ Stream collected and converted to JSON", trace_id);
+                          Ok(full_response) => {
+                              info!("[{}] ✓ Stream collected and converted to JSON", trace_id);
+                              return Ok((
+                                  StatusCode::OK,
+                                  [
+                                      ("X-Account-Email", email.as_str()),
+                                      ("X-Mapped-Model", mapped_model.as_str()),
+                                  ],
+                                  Json(full_response),
+                              )
+                                  .into_response());
+                          }
+                         Err(e) => {
+                             error!("[{}] Stream collection error: {}", trace_id, e);
                              return Ok((
-                                 StatusCode::OK,
-                                 [
-                                     ("X-Account-Email", email.as_str()),
-                                     ("X-Mapped-Model", mapped_model.as_str()),
-                                 ],
-                                 Json(full_response),
-                             ))
-                                 .into_response();
+                                 StatusCode::INTERNAL_SERVER_ERROR,
+                                 format!("Stream collection error: {}", e),
+                             )
+                                 .into_response());
                          }
-                        Err(e) => {
-                            error!("[{}] Stream collection error: {}", trace_id, e);
-                            return Ok((
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                format!("Stream collection error: {}", e),
-                            )
-                                .into_response());
-                        }
-                    }
+                     }
                 }
             }
 

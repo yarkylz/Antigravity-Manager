@@ -8,6 +8,7 @@ use axum::{
 };
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use tracing::error;
 
 use crate::proxy::{ProxyAuthMode, ProxySecurityConfig};
 

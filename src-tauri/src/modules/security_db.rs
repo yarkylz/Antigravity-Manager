@@ -1,7 +1,7 @@
 //! Security Database Module
 //! 安全监控相关的数据库操作
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, Row};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -243,83 +243,48 @@ pub fn get_ip_access_logs(
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
-    let logs_iter = if blocked_only {
+    // Helper closure to map row to IpAccessLog
+    let map_row = |row: &Row| -> Result<IpAccessLog, rusqlite::Error> {
+        Ok(IpAccessLog {
+            id: row.get(0)?,
+            client_ip: row.get(1)?,
+            timestamp: row.get(2)?,
+            method: row.get(3)?,
+            path: row.get(4)?,
+            user_agent: row.get(5)?,
+            status: row.get(6)?,
+            duration: row.get(7)?,
+            api_key_hash: row.get(8)?,
+            blocked: row.get::<_, i32>(9)? != 0,
+            block_reason: row.get(10)?,
+            username: row.get(11).unwrap_or(None),
+        })
+    };
+
+    let logs: Vec<IpAccessLog> = if blocked_only {
         if let Some(ip) = ip_filter {
-            stmt.query_map(params![ip, limit, offset], |row| {
-                Ok(IpAccessLog {
-                    id: row.get(0)?,
-                    client_ip: row.get(1)?,
-                    timestamp: row.get(2)?,
-                    method: row.get(3)?,
-                    path: row.get(4)?,
-                    user_agent: row.get(5)?,
-                    status: row.get(6)?,
-                    duration: row.get(7)?,
-                    api_key_hash: row.get(8)?,
-                    blocked: row.get::<_, i32>(9)? != 0,
-                    block_reason: row.get(10)?,
-                    username: row.get(11).unwrap_or(None),
-                })
-            })
+            stmt.query_map(params![ip, limit, offset], map_row)
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<IpAccessLog>, rusqlite::Error>>()
+                .map_err(|e| e.to_string())?
         } else {
-            stmt.query_map(params![limit, offset], |row| {
-                Ok(IpAccessLog {
-                    id: row.get(0)?,
-                    client_ip: row.get(1)?,
-                    timestamp: row.get(2)?,
-                    method: row.get(3)?,
-                    path: row.get(4)?,
-                    user_agent: row.get(5)?,
-                    status: row.get(6)?,
-                    duration: row.get(7)?,
-                    api_key_hash: row.get(8)?,
-                    blocked: row.get::<_, i32>(9)? != 0,
-                    block_reason: row.get(10)?,
-                    username: row.get(11).unwrap_or(None),
-                })
-            })
+            stmt.query_map(params![limit, offset], map_row)
+                .map_err(|e| e.to_string())?
+                .collect::<Result<Vec<IpAccessLog>, rusqlite::Error>>()
+                .map_err(|e| e.to_string())?
         }
     } else if let Some(ip) = ip_filter {
-        stmt.query_map(params![ip, limit, offset], |row| {
-            Ok(IpAccessLog {
-                id: row.get(0)?,
-                client_ip: row.get(1)?,
-                timestamp: row.get(2)?,
-                method: row.get(3)?,
-                path: row.get(4)?,
-                user_agent: row.get(5)?,
-                status: row.get(6)?,
-                duration: row.get(7)?,
-                api_key_hash: row.get(8)?,
-                blocked: row.get::<_, i32>(9)? != 0,
-                block_reason: row.get(10)?,
-                username: row.get(11).unwrap_or(None),
-            })
-        })
+        stmt.query_map(params![ip, limit, offset], map_row)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<IpAccessLog>, rusqlite::Error>>()
+            .map_err(|e| e.to_string())?
     } else {
-        stmt.query_map(params![limit, offset], |row| {
-            Ok(IpAccessLog {
-                id: row.get(0)?,
-                client_ip: row.get(1)?,
-                timestamp: row.get(2)?,
-                method: row.get(3)?,
-                path: row.get(4)?,
-                user_agent: row.get(5)?,
-                status: row.get(6)?,
-                duration: row.get(7)?,
-                api_key_hash: row.get(8)?,
-                blocked: row.get::<_, i32>(9)? != 0,
-                block_reason: row.get(10)?,
-                username: row.get(11).unwrap_or(None),
-            })
-        })
-    }
-    .map_err(|e| e.to_string())?;
+        stmt.query_map(params![limit, offset], map_row)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<IpAccessLog>, rusqlite::Error>>()
+            .map_err(|e| e.to_string())?
+    };
 
-    let mut logs = Vec::new();
-    for log in logs_iter {
-        logs.push(log.map_err(|e| e.to_string())?);
-    }
     Ok(logs)
 }
 

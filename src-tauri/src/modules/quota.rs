@@ -718,6 +718,19 @@ pub async fn fetch_quota_with_cache(
 
     let project_id = normalize_real_project_id(project_id.as_deref());
 
+    // Handle restricted accounts that have tier but no project_id
+    // Return quota data with the restriction info instead of failing
+    if project_id.is_none() && subscription_tier.is_some() {
+        crate::modules::logger::log_warn(&format!(
+            "⚠️ [{}] No project_id found for restricted account with tier '{}'",
+            email, subscription_tier.as_ref().unwrap()
+        ));
+        let mut q = QuotaData::new();
+        q.subscription_tier = subscription_tier.clone();
+        q.restriction_reason = restriction_reason.clone();
+        return Ok((q, None));
+    }
+
     let resolved_project_id = project_id.clone().ok_or_else(|| {
         AppError::Account(match subscription_tier.as_deref() {
             Some(tier) => format!(

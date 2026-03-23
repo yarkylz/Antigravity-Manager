@@ -1278,6 +1278,9 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                 
                 // Check if account is restricted (has restriction_reason)
                 if let Some(ref reason) = quota_data.restriction_reason {
+                    // Extract validation URL from quota_data if available
+                    let verification_url = quota_data.validation_url.clone();
+
                     let _ = crate::modules::account::mark_account_forbidden(
                         &account_id,
                         &format!("Restricted: {}", reason),
@@ -1286,8 +1289,8 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                         success: false,
                         status: "restricted".to_string(),
                         message: format!("Account is restricted: {}", reason),
-                        requires_verification: None,
-                        verification_url: None,
+                        requires_verification: Some(verification_url.is_some()),
+                        verification_url,
                         is_banned: Some(false),
                         is_forbidden: Some(true),
                         details: Some(format!(

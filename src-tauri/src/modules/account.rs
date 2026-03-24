@@ -1280,11 +1280,14 @@ pub fn update_account_quota(account_id: &str, quota: QuotaData) -> Result<(), St
                     }
                 }
 
-                for std_id in &config.quota_protection.monitored_models {
-                    let min_pct = group_min_percentage.get(std_id).cloned().unwrap_or(100);
+                for model_id in &config.quota_protection.monitored_models {
+                    // Normalize config model ID to standard ID for lookup
+                    let std_id = crate::proxy::common::model_mapping::normalize_to_standard_id(model_id)
+                        .unwrap_or_else(|| model_id.clone());
+                    let min_pct = group_min_percentage.get(&std_id).cloned().unwrap_or(100);
 
                     if min_pct <= threshold {
-                        if !account.protected_models.contains(std_id) {
+                        if !account.protected_models.contains(&std_id) {
                             crate::modules::logger::log_info(&format!(
                                 "[Quota] Triggering model protection: {} (Group: {} Min: {}% <= Thres: {}%)",
                                 account.email, std_id, min_pct, threshold
@@ -1292,12 +1295,12 @@ pub fn update_account_quota(account_id: &str, quota: QuotaData) -> Result<(), St
                             account.protected_models.insert(std_id.clone());
                         }
                     } else {
-                        if account.protected_models.contains(std_id) {
+                        if account.protected_models.contains(&std_id) {
                             crate::modules::logger::log_info(&format!(
                                 "[Quota] Model protection recovered: {} (Group: {} Min: {}% > Thres: {}%)",
                                 account.email, std_id, min_pct, threshold
                             ));
-                            account.protected_models.remove(std_id);
+                            account.protected_models.remove(&std_id);
                         }
                     }
                 }

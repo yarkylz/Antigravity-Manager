@@ -699,9 +699,12 @@ impl TokenManager {
             .to_string();
         let mut changed = false;
 
-        for std_id in &config.monitored_models {
+        for model_id in &config.monitored_models {
+            // Normalize config model ID to standard ID for lookup
+            let std_id = crate::proxy::common::model_mapping::normalize_to_standard_id(model_id)
+                .unwrap_or_else(|| model_id.clone());
             // 获取该组的最低百分比，如果账号没该组型号则视为 100%
-            let min_pct = group_min_percentage.get(std_id).cloned().unwrap_or(100);
+            let min_pct = group_min_percentage.get(&std_id).cloned().unwrap_or(100);
 
             if min_pct <= threshold {
                 // 只要组内有一个不行，触发全组保护
@@ -712,7 +715,7 @@ impl TokenManager {
                         account_path,
                         min_pct,
                         threshold,
-                        std_id,
+                        &std_id,
                     )
                     .await
                     .unwrap_or(false)
@@ -726,12 +729,12 @@ impl TokenManager {
                     .and_then(|v| v.as_array());
 
                 let is_protected = protected_models.map_or(false, |arr| {
-                    arr.iter().any(|m| m.as_str() == Some(std_id as &str))
+                    arr.iter().any(|m| m.as_str() == Some(&std_id as &str))
                 });
 
                 if is_protected {
                     if self
-                        .restore_quota_protection(account_json, &account_id, account_path, std_id)
+                        .restore_quota_protection(account_json, &account_id, account_path, &std_id)
                         .await
                         .unwrap_or(false)
                     {

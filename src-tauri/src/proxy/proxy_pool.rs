@@ -567,16 +567,35 @@ impl ProxyPoolManager {
     }
 
     /// 检查单个代理健康状态
+    /// [FIX] 尝试多个 health check URL, 有些代理可能无法访问 cloudflare
     async fn check_proxy_health(&self, entry: &ProxyEntry) -> (bool, Option<u64>) {
-        let check_url = if let Some(url) = &entry.health_check_url {
-            if url.trim().is_empty() {
-                "http://cp.cloudflare.com/generate_204"
-            } else {
-                url.as_str()
+        // 自定义 health check URL имеет приоритет
+        if let Some(url) = &entry.health_check_url {
+            if !url.trim().is_empty() {
+                return self.check_proxy_with_url(entry, url).await;
             }
-        } else {
-            "http://cp.cloudflare.com/generate_204"
-        };
+        }
+
+        // 尝试多个 URL (некоторые прокси могут блокировать cloudflare)
+        let check_urls = [
+            "http://cp.cloudflare.com/generate_204",
+            "http://www.google.com/generate_204",
+            "http://httpbin.org/get",
+        ];
+
+        for url in &check_urls {
+            let (healthy, latency) = self.check_proxy_with_url(entry, url).await;
+            if healthy {
+                return (true, latency);
+            }
+        }
+
+        // 所有 URL 都失败
+        (false, None)
+    }
+
+    /// 使用指定 URL 检查代理健康状态
+    async fn check_proxy_with_url(&self, entry: &ProxyEntry, check_url: &str) -> (bool, Option<u64>) {
 
         // 尝试构建 Client，如果失败直接视为不健康
         let proxy_res = self.build_proxy_config(entry);
@@ -602,22 +621,51 @@ impl ProxyPoolManager {
         };
 
         let start = std::time::Instant::now();
+        tracing::debug!(
+            "[HealthCheck] Starting check for {} via {}",
+            entry.url,
+            check_url
+        );
+
         match client.get(check_url).send().await {
             Ok(resp) => {
                 let latency = start.elapsed().as_millis() as u64;
                 if resp.status().is_success() {
+                    tracing::info!(
+                        "[HealthCheck] Proxy {} is healthy ({}ms, status: {})",
+                        entry.url,
+                        latency,
+                        resp.status()
+                    );
                     (true, Some(latency))
                 } else {
                     tracing::warn!(
-                        "Proxy {} health check status error: {}",
+                        "[HealthCheck] Proxy {} status error: {} (latency: {}ms)",
                         entry.url,
-                        resp.status()
+                        resp.status(),
+                        latency
                     );
                     (false, None)
                 }
             }
             Err(e) => {
-                tracing::warn!("Proxy {} health check request failed: {}", entry.url, e);
+                let elapsed = start.elapsed().as_millis();
+                let error_msg = e.to_string();
+                if error_msg.contains("timeout") || error_msg.contains("timed out") {
+                    tracing::warn!(
+                        "[HealthCheck] Proxy {} TIMEOUT after {}ms: {}",
+                        entry.url,
+                        elapsed,
+                        error_msg
+                    );
+                } else {
+                    tracing::warn!(
+                        "[HealthCheck] Proxy {} request failed after {}ms: {}",
+                        entry.url,
+                        elapsed,
+                        error_msg
+                    );
+                }
                 (false, None)
             }
         }

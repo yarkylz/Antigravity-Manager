@@ -50,8 +50,13 @@ export default function AccountErrorDialog({ account, onClose }: AccountErrorDia
     };
 
     const extractActionInfo = (raw: string): { url: string | null, label: string | null } => {
+        // Check account.validation_url first (primary location)
         if (account.validation_url) {
             return { url: account.validation_url, label: null };
+        }
+        // Also check quota.validation_url (fallback for older accounts)
+        if (account.quota?.validation_url) {
+            return { url: account.quota.validation_url, label: null };
         }
 
         const trimmed = raw.trim();

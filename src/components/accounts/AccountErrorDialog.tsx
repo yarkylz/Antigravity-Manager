@@ -22,7 +22,9 @@ export default function AccountErrorDialog({ account, onClose }: AccountErrorDia
     const isProxyDisabled = account.proxy_disabled;
     const isValidationBlocked = account.validation_blocked;
 
-    const rawReason = account.validation_blocked_reason || account.disabled_reason || account.quota?.forbidden_reason || account.proxy_disabled_reason || '';
+    // Use raw_error_response for Show Raw (contains full API error response)
+    // Fallback to existing reason fields if raw_error_response is not available
+    const rawReason = account.raw_error_response || account.validation_blocked_reason || account.disabled_reason || account.quota?.forbidden_reason || account.proxy_disabled_reason || '';
 
     // 深度解析解析错误消息
     const extractErrorMessage = (raw: string) => {

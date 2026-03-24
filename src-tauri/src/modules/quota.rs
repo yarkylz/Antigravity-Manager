@@ -846,20 +846,23 @@ pub async fn fetch_quota_with_cache(
                 if let Err(_) = response.error_for_status_ref() {
                     let status = response.status();
 
+                    // Read response text for error details
+                    let text = response.text().await.unwrap_or_default();
+
                     // ✅ Special handling for 403 Forbidden - return directly, no retry
                     if status == rquest::StatusCode::FORBIDDEN {
                         crate::modules::logger::log_warn(&format!(
-                            "Account unauthorized (403 Forbidden), marking as forbidden"
+                            "Account unauthorized (403 Forbidden): {}",
+                            text
                         ));
                         let mut q = QuotaData::new();
                         q.is_forbidden = true;
+                        q.forbidden_reason = Some(text.clone());
                         q.subscription_tier = subscription_tier.clone();
                         q.restriction_reason = restriction_reason.clone();
                         q.validation_url = validation_url.clone();
                         return Ok((q, project_id.clone()));
                     }
-
-                    let text = response.text().await.unwrap_or_default();
 
                     // 429/5xx: fallback to next endpoint
                     if has_next
@@ -1181,6 +1184,7 @@ pub async fn warm_up_all_accounts() -> Result<String, String> {
                             &id,
                             "Warmup: 403 Forbidden - quota fetch denied",
                             None,
+                            fresh_quota.forbidden_reason.as_deref(),
                         );
                         continue;
                     }
@@ -1345,7 +1349,7 @@ pub async fn warm_up_account(account_id: &str) -> Result<String, String> {
             email
         ));
         let reason = "Warmup: 403 Forbidden - quota fetch denied";
-        let _ = crate::modules::account::mark_account_forbidden(account_id, reason, None);
+        let _ = crate::modules::account::mark_account_forbidden(account_id, reason, None, fresh_quota.forbidden_reason.as_deref());
         return Err("Account is forbidden (403)".to_string());
     }
 

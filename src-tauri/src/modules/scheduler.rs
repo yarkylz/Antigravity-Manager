@@ -118,6 +118,7 @@ pub fn start_scheduler(
                         &account.id,
                         "Scheduler: 403 Forbidden - quota fetch denied",
                         None,
+                        None,
                     );
                     continue;
                 }
@@ -329,6 +330,7 @@ pub async fn trigger_warmup_for_account(account: &Account) {
         let _ = account::mark_account_forbidden(
             &account.id,
             "Scheduler: 403 Forbidden - quota fetch denied",
+            None,
             None,
         );
         return;

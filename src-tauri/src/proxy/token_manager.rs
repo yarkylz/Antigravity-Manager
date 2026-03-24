@@ -2943,7 +2943,7 @@ impl TokenManager {
     /// Set is_forbidden status for an account (called when proxy encounters 403)
     pub async fn set_forbidden(&self, account_id: &str, reason: &str) -> Result<(), String> {
         // [FIX] 调用封装好的模块函数，确保线程安全地更新账号文件和索引
-        crate::modules::account::mark_account_forbidden(account_id, reason, None)?;
+        crate::modules::account::mark_account_forbidden(account_id, reason, None, None)?;
 
         // Clear sticky session if forbidden
         self.session_accounts.retain(|_, v| *v != account_id);

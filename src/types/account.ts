@@ -20,6 +20,7 @@ export interface Account {
     validation_blocked_until?: number;
     validation_blocked_reason?: string;
     validation_url?: string;
+    raw_error_response?: string;  // Raw API error response for debugging (Show Raw)
     created_at: number;
     last_used: number;
 }

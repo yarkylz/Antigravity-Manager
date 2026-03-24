@@ -1263,16 +1263,19 @@ pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Resul
             let _ = modules::update_account_quota(&account_id, quota_data.clone());
 
             if quota_data.is_forbidden {
+                let validation_url = quota_data.validation_url.clone();
+                let raw_error = quota_data.forbidden_reason.clone();
                 let _ = crate::modules::account::mark_account_forbidden(
                     &account_id,
                     "Onboarding: 403 Forbidden",
-                    None,
+                    validation_url.as_deref(),
+                    raw_error.as_deref(),
                 );
                 Ok(OnboardingResult {
                     success: false,
                     message: "Account is forbidden (403)".to_string(),
                     status: Some("forbidden".to_string()),
-                    details: Some("The account has been denied access to the API".to_string()),
+                    details: Some(validation_url.map(|u| format!("The account has been denied access to the API. Verification URL: {}", u)).unwrap_or_else(|| "The account has been denied access to the API".to_string())),
                 })
             } else {
                 let model_count = quota_data.models.len();
@@ -1355,17 +1358,20 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
             let _ = modules::update_account_quota(&account_id, quota_data.clone());
 
             if quota_data.is_forbidden {
+                let validation_url = quota_data.validation_url.clone();
+                let raw_error = quota_data.forbidden_reason.clone();
                 let _ = crate::modules::account::mark_account_forbidden(
                     &account_id,
                     "Test request: 403 Forbidden",
-                    None,
+                    validation_url.as_deref(),
+                    raw_error.as_deref(),
                 );
                 Ok(TestRequestResult {
                     success: false,
                     status: "forbidden".to_string(),
                     message: "Account access denied (403 Forbidden)".to_string(),
-                    requires_verification: None,
-                    verification_url: None,
+                    requires_verification: Some(validation_url.is_some()),
+                    verification_url,
                     is_banned: None,
                     is_forbidden: Some(true),
                     details: Some(
@@ -1383,11 +1389,13 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                 if let Some(ref reason) = quota_data.restriction_reason {
                     // Extract validation URL from quota_data if available
                     let verification_url = quota_data.validation_url.clone();
+                    let raw_error = quota_data.forbidden_reason.clone();
 
                     let _ = crate::modules::account::mark_account_forbidden(
                         &account_id,
                         &format!("Restricted: {}", reason),
                         verification_url.as_deref(),
+                        raw_error.as_deref(),
                     );
                     Ok(TestRequestResult {
                         success: false,

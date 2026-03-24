@@ -259,6 +259,7 @@ mod tests {
                     last_used: now,
                     proxy_id: None,
                     validation_url: None,
+                    raw_error_response: None,
                 },
                 AccountSummary {
                     id: "acc-2".to_string(),
@@ -271,6 +272,7 @@ mod tests {
                     last_used: now - 50,
                     proxy_id: None,
                     validation_url: None,
+                    raw_error_response: None,
                 },
             ],
             current_account_id: Some("acc-1".to_string()),
@@ -527,6 +529,7 @@ fn rebuild_index_from_accounts_in_dir(data_dir: &PathBuf) -> Result<AccountIndex
                                     last_used: account.last_used,
                                     proxy_id: account.proxy_id,
                                     validation_url: account.validation_url,
+                                    raw_error_response: account.raw_error_response,
                                 });
                             }
                             Err(e) => {
@@ -791,6 +794,7 @@ pub fn add_account(
         last_used: account.last_used,
         proxy_id: account.proxy_id.clone(),
         validation_url: account.validation_url.clone(),
+        raw_error_response: account.raw_error_response.clone(),
     });
 
     // If first account, set as current
@@ -1394,7 +1398,7 @@ pub fn find_account_id_by_email(email: &str) -> Option<String> {
         .map(|a| a.id)
 }
 
-pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Option<&str>) -> Result<(), String> {
+pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Option<&str>, raw_error_response: Option<&str>) -> Result<(), String> {
     let _lock = ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|e| format!("failed_to_acquire_lock: {}", e))?;
@@ -1405,6 +1409,11 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Op
     let extracted_validation_url = validation_url
         .map(|s| s.to_string())
         .or_else(|| extract_validation_url_from_reason(reason));
+
+    // Save raw error response for debugging
+    if let Some(raw) = raw_error_response {
+        account.raw_error_response = Some(raw.to_string());
+    }
 
     // 1. Update quota status
     if let Some(ref mut q) = account.quota {
@@ -1444,6 +1453,7 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Op
     if let Some(summary) = index.accounts.iter_mut().find(|a| a.id == account_id) {
         summary.proxy_disabled = true;
         summary.validation_url = account.validation_url.clone();
+        summary.raw_error_response = account.raw_error_response.clone();
         save_account_index(&index)?;
     }
 

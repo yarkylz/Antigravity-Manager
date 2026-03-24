@@ -305,6 +305,7 @@ pub async fn handle_warmup(
                             &resolved_account_id,
                             &error_text,
                             None,
+                            Some(&error_text),
                         );
                     } else {
                         warn!(

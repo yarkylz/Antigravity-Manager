@@ -1371,7 +1371,7 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                     status: "forbidden".to_string(),
                     message: "Account access denied (403 Forbidden)".to_string(),
                     requires_verification: Some(validation_url.is_some()),
-                    verification_url,
+                    verification_url: validation_url,
                     is_banned: None,
                     is_forbidden: Some(true),
                     details: Some(

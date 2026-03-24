@@ -1391,15 +1391,17 @@ pub fn find_account_id_by_email(email: &str) -> Option<String> {
         .map(|a| a.id)
 }
 
-pub fn mark_account_forbidden(account_id: &str, reason: &str) -> Result<(), String> {
+pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Option<&str>) -> Result<(), String> {
     let _lock = ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|e| format!("failed_to_acquire_lock: {}", e))?;
 
     let mut account = load_account(account_id)?;
 
-    // [NEW] Extract validation_url/appeal_url from the reason if present
-    let extracted_validation_url = extract_validation_url_from_reason(reason);
+    // [NEW] Use provided validation_url, or try to extract from reason if not provided
+    let extracted_validation_url = validation_url
+        .map(|s| s.to_string())
+        .or_else(|| extract_validation_url_from_reason(reason));
 
     // 1. Update quota status
     if let Some(ref mut q) = account.quota {
@@ -1434,6 +1436,7 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str) -> Result<(), Stri
     let mut index = load_account_index()?;
     if let Some(summary) = index.accounts.iter_mut().find(|a| a.id == account_id) {
         summary.proxy_disabled = true;
+        summary.validation_url = account.validation_url.clone();
         save_account_index(&index)?;
     }
 

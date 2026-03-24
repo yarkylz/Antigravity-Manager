@@ -304,6 +304,7 @@ pub async fn handle_warmup(
                         let _ = crate::modules::account::mark_account_forbidden(
                             &resolved_account_id,
                             &error_text,
+                            None,
                         );
                     } else {
                         warn!(

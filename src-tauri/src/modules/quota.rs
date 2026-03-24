@@ -1180,6 +1180,7 @@ pub async fn warm_up_all_accounts() -> Result<String, String> {
                         let _ = crate::modules::account::mark_account_forbidden(
                             &id,
                             "Warmup: 403 Forbidden - quota fetch denied",
+                            None,
                         );
                         continue;
                     }
@@ -1344,7 +1345,7 @@ pub async fn warm_up_account(account_id: &str) -> Result<String, String> {
             email
         ));
         let reason = "Warmup: 403 Forbidden - quota fetch denied";
-        let _ = crate::modules::account::mark_account_forbidden(account_id, reason);
+        let _ = crate::modules::account::mark_account_forbidden(account_id, reason, None);
         return Err("Account is forbidden (403)".to_string());
     }
 

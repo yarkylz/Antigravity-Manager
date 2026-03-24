@@ -1266,6 +1266,7 @@ pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Resul
                 let _ = crate::modules::account::mark_account_forbidden(
                     &account_id,
                     "Onboarding: 403 Forbidden",
+                    None,
                 );
                 Ok(OnboardingResult {
                     success: false,
@@ -1357,6 +1358,7 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                 let _ = crate::modules::account::mark_account_forbidden(
                     &account_id,
                     "Test request: 403 Forbidden",
+                    None,
                 );
                 Ok(TestRequestResult {
                     success: false,
@@ -1385,6 +1387,7 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                     let _ = crate::modules::account::mark_account_forbidden(
                         &account_id,
                         &format!("Restricted: {}", reason),
+                        verification_url.as_deref(),
                     );
                     Ok(TestRequestResult {
                         success: false,

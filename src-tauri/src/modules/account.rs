@@ -1582,6 +1582,13 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
                 account.disabled = true;
                 account.disabled_at = Some(chrono::Utc::now().timestamp());
                 account.disabled_reason = Some(format!("invalid_grant: {}", e));
+                // [FIX] Also save the raw API response for Show Raw functionality
+                // Extract the raw response from the error message (format: "Refresh failed: {raw_response}")
+                if let Some(raw_response) = e.strip_prefix("Refresh failed: ") {
+                    account.raw_error_response = Some(raw_response.to_string());
+                } else {
+                    account.raw_error_response = Some(e.clone());
+                }
                 let _ = save_account(account);
                 crate::proxy::server::trigger_account_reload(&account.id);
             }
@@ -1676,6 +1683,12 @@ pub async fn fetch_quota_with_retry(account: &mut Account) -> crate::error::AppR
                             account.disabled = true;
                             account.disabled_at = Some(chrono::Utc::now().timestamp());
                             account.disabled_reason = Some(format!("invalid_grant: {}", e));
+                            // [FIX] Also save the raw API response for Show Raw functionality
+                            if let Some(raw_response) = e.strip_prefix("Refresh failed: ") {
+                                account.raw_error_response = Some(raw_response.to_string());
+                            } else {
+                                account.raw_error_response = Some(e.clone());
+                            }
                             let _ = save_account(account);
                             crate::proxy::server::trigger_account_reload(&account.id);
                         }

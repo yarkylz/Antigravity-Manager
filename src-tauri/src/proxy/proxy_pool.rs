@@ -58,6 +58,13 @@ impl ProxyPoolManager {
         // 使用 blocking 方式读取配置（因为 new 不是 async）
         // 注意：这里使用 try_read 避免死锁
         if let Ok(cfg) = config.try_read() {
+            // [DEBUG] Log proxy list status
+            tracing::info!(
+                "[ProxyPool] Initializing with {} proxies, {} account bindings",
+                cfg.proxies.len(),
+                cfg.account_bindings.len()
+            );
+            
             // [DEBUG] Log proxy URLs being loaded
             for proxy in &cfg.proxies {
                 tracing::info!(
@@ -76,6 +83,8 @@ impl ProxyPoolManager {
                     cfg.account_bindings.len()
                 );
             }
+        } else {
+            tracing::warn!("[ProxyPool] Failed to read config when initializing");
         }
 
         Self {
@@ -85,6 +94,11 @@ impl ProxyPoolManager {
             account_bindings,
             round_robin_index: Arc::new(AtomicUsize::new(0)),
         }
+    }
+
+    /// [NEW] 检查账号是否有绑定的代理
+    pub fn has_binding(&self, account_id: &str) -> bool {
+        self.account_bindings.get(account_id).is_some()
     }
 
     /// [NEW] 为指定账号获取“最终生效”的 HttpClient
@@ -102,8 +116,20 @@ impl ProxyPoolManager {
             .timeout(Duration::from_secs(timeout_secs));
 
         // 尝试获取代理配置
+        // [NEW] 检查账号是否有绑定的代理（用于防止 fallback）
+        let has_bound = account_id.map(|id| self.has_binding(id)).unwrap_or(false);
+
         let proxy_opt = if let Some(acc_id) = account_id {
-            self.get_proxy_for_account(acc_id).await.ok().flatten()
+            // [FIX] 不再使用 .ok() 丢弃错误！如果 bound proxy unhealthy - 必须报错阻止请求
+            // 这是安全关键：不允许 fallback 到 direct
+            match self.get_proxy_for_account(acc_id).await {
+                Ok(proxy) => proxy,
+                Err(e) => {
+                    // Bound proxy unhealthy - 请求被阻止，记录错误并返回 None
+                    tracing::error!("[Proxy] {}", e);
+                    None
+                }
+            }
         } else {
             // 没有 account_id 的通用请求，如果代理池启用，则默认从中选择节点作为出口
             let config = self.config.read().await;
@@ -128,8 +154,17 @@ impl ProxyPoolManager {
         if let Some(proxy_cfg) = proxy_opt {
             builder = builder.proxy(proxy_cfg.proxy);
             // Already logged more detail in get_proxy_for_account or pool selection
+        } else if has_bound {
+            // [CRITICAL] 账号有绑定的代理但获取失败！这不应该发生！
+            // 禁止 fallback 到 direct - 返回一个永远超时的 client 让请求失败
+            tracing::error!(
+                "[Proxy] CRITICAL: Account {:?} has bound proxy but failed to get it! Blocking request (no fallback allowed).",
+                account_id
+            );
+            // 返回一个超时为 0 的 client，实际上会立即超时失败
+            builder = builder.timeout(Duration::from_secs(0));
         } else if let Some(ref upstream) = self.upstream_proxy {
-            // Fallback 到应用配置的单上游代理 (从内存读取)
+            // Fallback 到应用配置的单上游代理 (从内存读取) - 仅针对无绑定的账号
             let up = upstream.read().await;
             if up.enabled && !up.url.is_empty() {
                 let url = crate::proxy::config::normalize_proxy_url(&up.url);
@@ -143,13 +178,13 @@ impl ProxyPoolManager {
                 }
             } else {
                 tracing::info!(
-                    "[Proxy] Route: {:?} -> Direct",
+                    "[Proxy] Route: {:?} -> Direct (no binding, no upstream)",
                     account_id.unwrap_or("Generic")
                 );
             }
         } else {
             tracing::info!(
-                "[Proxy] Route: {:?} -> Direct (no upstream proxy configured)",
+                "[Proxy] Route: {:?} -> Direct (no binding, no upstream configured)",
                 account_id.unwrap_or("Generic")
             );
         }
@@ -167,9 +202,20 @@ impl ProxyPoolManager {
             // 无 Emulation 设置，走纯正的基础 TLS 指纹
             .timeout(Duration::from_secs(timeout_secs));
 
+        // [NEW] 检查账号是否有绑定的代理（用于防止 fallback）
+        let has_bound = account_id.map(|id| self.has_binding(id)).unwrap_or(false);
+
         // 尝试获取代理配置
         let proxy_opt = if let Some(acc_id) = account_id {
-            self.get_proxy_for_account(acc_id).await.ok().flatten()
+            // [FIX] 不再使用 .ok() 丢弃错误！如果 bound proxy unhealthy - 必须报错阻止请求
+            match self.get_proxy_for_account(acc_id).await {
+                Ok(proxy) => proxy,
+                Err(e) => {
+                    // Bound proxy unhealthy - 请求被阻止，记录错误并返回 None
+                    tracing::error!("[Proxy] (Standard) {}", e);
+                    None
+                }
+            }
         } else {
             // 没有 account_id 的通用请求，如果代理池启用，则默认从中选择节点作为出口
             let config = self.config.read().await;
@@ -194,8 +240,17 @@ impl ProxyPoolManager {
 
         if let Some(proxy_cfg) = proxy_opt {
             builder = builder.proxy(proxy_cfg.proxy);
+        } else if has_bound {
+            // [CRITICAL] 账号有绑定的代理但获取失败！这不应该发生！
+            // 禁止 fallback 到 direct - 返回一个永远超时的 client 让请求失败
+            tracing::error!(
+                "[Proxy] CRITICAL: Account {:?} (Standard Client) has bound proxy but failed to get it! Blocking request (no fallback allowed).",
+                account_id
+            );
+            // 返回一个超时为 0 的 client，实际上会立即超时失败
+            builder = builder.timeout(Duration::from_secs(0));
         } else if let Some(ref upstream) = self.upstream_proxy {
-            // Fallback 到应用配置的单上游代理 (从内存读取)
+            // Fallback 到应用配置的单上游代理 (从内存读取) - 仅针对无绑定的账号
             let up = upstream.read().await;
             if up.enabled && !up.url.is_empty() {
                 let url = crate::proxy::config::normalize_proxy_url(&up.url);
@@ -209,13 +264,13 @@ impl ProxyPoolManager {
                 }
             } else {
                 tracing::info!(
-                    "[Proxy] Route: {:?} (Standard Client) -> Direct",
+                    "[Proxy] Route: {:?} (Standard Client) -> Direct (no binding, no upstream)",
                     account_id.unwrap_or("Generic")
                 );
             }
         } else {
             tracing::info!(
-                "[Proxy] Route: {:?} (Standard Client) -> Direct (no upstream proxy configured)",
+                "[Proxy] Route: {:?} (Standard Client) -> Direct (no binding, no upstream configured)",
                 account_id.unwrap_or("Generic")
             );
         }
@@ -540,10 +595,20 @@ impl ProxyPoolManager {
 
     /// 健康检查
     pub async fn health_check(&self) -> Result<(), String> {
+        // [DEBUG] Log config source for health check
+        tracing::debug!("[HealthCheck] Starting health check with {} proxies", {
+            let config = self.config.read().await;
+            config.proxies.len()
+        });
+
         // 由于需要异步并发检查，且不能锁住 config 太久，
         // 我们先复制一份需要检查的代理列表
         let proxies_to_check: Vec<_> = {
             let config = self.config.read().await;
+            // [DEBUG] Log first few proxy URLs to debug corruption
+            for (i, proxy) in config.proxies.iter().filter(|p| p.enabled).take(3).enumerate() {
+                tracing::debug!("[HealthCheck] Proxy {}: {} -> {}", i, proxy.name, proxy.url);
+            }
             config
                 .proxies
                 .iter()

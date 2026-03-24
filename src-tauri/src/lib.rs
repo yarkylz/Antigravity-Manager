@@ -360,10 +360,32 @@ pub fn run() {
             }
 
             // 立即启动管理服务器 (8045)，以便 Web 端能访问
+            // [FIX] 先初始化代理池，使其在账号操作之前就可用
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 // Load config
                 if let Ok(config) = modules::config::load_app_config() {
+                    // [FIX] 立即初始化代理池（在管理服务器启动之前），这样账号操作就能使用代理绑定了
+                    // 使用原始配置，不克隆，让AxumServer也使用同一个配置
+                    let proxy_pool_config = config.proxy.proxy_pool.clone();
+                    let upstream_proxy_config = config.proxy.upstream_proxy.clone();
+                    
+                    let proxy_pool_arc = Arc::new(tokio::sync::RwLock::new(proxy_pool_config));
+                    let upstream_proxy_arc = Arc::new(tokio::sync::RwLock::new(upstream_proxy_config));
+                    
+                    let proxy_pool_manager = crate::proxy::proxy_pool::init_global_proxy_pool(
+                        proxy_pool_arc.clone(),
+                        upstream_proxy_arc.clone(),
+                    );
+                    // 立即启动健康检查
+                    proxy_pool_manager.clone().start_health_check_loop();
+                    info!("[FIX] Proxy pool initialized early with health check for account bindings");
+
+                    // 修改 config，让 AxumServer 使用相同的配置
+                    let mut modified_config = config.proxy.clone();
+                    // 将已初始化的配置包装后传入（通过clone，AxumServer会重新包装，但数据相同）
+                    // 实际上AxumServer会重新创建manager，我们只需要确保global先设置好
+                    
                     let state = handle.state::<commands::proxy::ProxyServiceState>();
                     let cf_state = handle.state::<commands::cloudflared::CloudflaredState>();
                     let integration =

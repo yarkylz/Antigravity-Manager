@@ -763,13 +763,12 @@ pub async fn check_proxy_health(
 ) -> Result<ProxyPoolConfig, String> {
     let instance_lock = state.instance.read().await;
     if let Some(instance) = instance_lock.as_ref() {
-        let pool_state = instance.axum_server.proxy_pool_state.clone();
-        let manager = crate::proxy::proxy_pool::ProxyPoolManager::new(pool_state.clone(), None);
-
-        manager.health_check().await?;
+        // [FIX] Use existing pool manager from axum_server instead of creating new instance
+        // This prevents losing account bindings when new manager is created
+        instance.axum_server.proxy_pool_manager.health_check().await?;
 
         // Return the updated config from memory
-        let config = pool_state.read().await;
+        let config = instance.axum_server.proxy_pool_state.read().await;
         Ok(config.clone())
     } else {
         Err("服务未运行".to_string())

@@ -160,13 +160,13 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                     {t('accounts.proxy_disabled').toUpperCase()}
                                 </span>
                             )}
-                            {account.quota?.is_forbidden && (
+                            {account.quota?.is_forbidden && !account.validation_url && (
                                 <span className="px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[9px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50">
                                     <Lock className="w-2.5 h-2.5" />
                                     {t('accounts.forbidden').toUpperCase()}
                                 </span>
                             )}
-                            {(account.validation_blocked || account.validation_url) && !account.quota?.restriction_reason && (
+                            {(account.validation_blocked || account.validation_url) && (
                                 <span className="px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[9px] font-bold flex items-center gap-1 shadow-sm border border-amber-200/50">
                                     <Clock className="w-2.5 h-2.5" />
                                     {t('accounts.status.validation_required').toUpperCase()}
@@ -222,7 +222,19 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                             )}
                             {/* 绑定代理 */}
                             {account.proxy_id && (() => {
-                                const proxy = config?.proxy?.proxy_pool?.proxies?.find((p) => p.id === account.proxy_id);
+                                const proxies = config?.proxy?.proxy_pool?.proxies;
+                                const proxy = proxies?.find((p) => p.id === account.proxy_id);
+                                
+                                // If proxy_id exists but proxies not configured, show ID
+                                if (!proxies || proxies.length === 0) {
+                                    return (
+                                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[9px] font-bold shadow-sm border border-gray-200 dark:border-gray-700" title={`Proxy ID: ${account.proxy_id}`}>
+                                            <Globe className="w-2.5 h-2.5" />
+                                            {account.proxy_id.slice(0, 8)}
+                                        </span>
+                                    );
+                                }
+                                
                                 return proxy ? (
                                     <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[9px] font-bold shadow-sm border border-teal-200/50 dark:border-teal-800/50" title={proxy.url}>
                                         <Globe className="w-2.5 h-2.5" />

@@ -58,6 +58,15 @@ impl ProxyPoolManager {
         // 使用 blocking 方式读取配置（因为 new 不是 async）
         // 注意：这里使用 try_read 避免死锁
         if let Ok(cfg) = config.try_read() {
+            // [DEBUG] Log proxy URLs being loaded
+            for proxy in &cfg.proxies {
+                tracing::info!(
+                    "[ProxyPool] Loaded proxy: {} -> {}",
+                    proxy.name,
+                    proxy.url
+                );
+            }
+            
             for (account_id, proxy_id) in &cfg.account_bindings {
                 account_bindings.insert(account_id.clone(), proxy_id.clone());
             }

@@ -1407,13 +1407,17 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Op
     if let Some(ref mut q) = account.quota {
         q.is_forbidden = true;
         q.forbidden_reason = Some(reason.to_string());
+        // Also set validation_url in quota for frontend access
+        if let Some(ref url) = extracted_validation_url {
+            q.validation_url = Some(url.clone());
+        }
     } else {
         account.quota = Some(crate::models::QuotaData {
             models: Vec::new(),
             last_updated: chrono::Utc::now().timestamp(),
             subscription_tier: None,
             restriction_reason: None,
-            validation_url: None,
+            validation_url: extracted_validation_url.clone(),
             is_forbidden: true,
             forbidden_reason: Some(reason.to_string()),
             model_forwarding_rules: std::collections::HashMap::new(),

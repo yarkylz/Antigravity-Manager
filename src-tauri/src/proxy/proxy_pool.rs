@@ -371,9 +371,13 @@ impl ProxyPoolManager {
             .map_err(|e| format!("Invalid proxy URL: {}", e))?;
 
         // 提取 username/password из URL (если есть)
-        let username = parsed_url.username().filter(|u| !u.is_empty()).map(|u| u.to_string());
-        let password = parsed_url.password().filter(|p| !p.is_empty()).map(|p| p.to_string());
-        let embedded_auth = username.zip(password);
+        // parsed_url.username() возвращает Option<&str>
+        let embedded_auth: Option<(String, String)> = parsed_url.username()
+            .and_then(|u| if u.is_empty() { None } else { Some(u.to_string()) })
+            .and_then(|username| {
+                parsed_url.password()
+                    .and_then(|p| if p.is_empty() { None } else { Some((username, p.to_string())) })
+            });
 
         // 构建 URL без credentials (rquest::Proxy::all не должен получать URL с credentials в пути)
         let clean_url = if embedded_auth.is_some() {

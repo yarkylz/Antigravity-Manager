@@ -166,7 +166,7 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                     {t('accounts.forbidden').toUpperCase()}
                                 </span>
                             )}
-                            {account.validation_blocked && (
+                            {(account.validation_blocked || account.validation_url) && !account.quota?.restriction_reason && (
                                 <span className="px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 text-[9px] font-bold flex items-center gap-1 shadow-sm border border-amber-200/50">
                                     <Clock className="w-2.5 h-2.5" />
                                     {t('accounts.status.validation_required').toUpperCase()}

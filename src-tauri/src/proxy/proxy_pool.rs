@@ -630,14 +630,19 @@ impl ProxyPoolManager {
         let client = match client_result {
             Ok(c) => c,
             Err(e) => {
-                tracing::error!("Proxy {} build client failed: {}", entry.url, e);
+                let err_str = e.to_string();
+                if err_str.contains("SSL") || err_str.contains("TLS") || err_str.contains("certificate") {
+                    tracing::error!("Proxy {} build client FAILED (SSL/TLS error): {} - Make sure proxy supports HTTPS or use HTTP URL", entry.url, e);
+                } else {
+                    tracing::error!("Proxy {} build client failed: {}", entry.url, e);
+                }
                 return (false, None);
             }
         };
 
         let start = std::time::Instant::now();
-        tracing::debug!(
-            "[HealthCheck] Starting check for {} via {}",
+        tracing::info!(
+            "[HealthCheck] Starting check for proxy {} via {}",
             entry.url,
             check_url
         );

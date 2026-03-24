@@ -1412,6 +1412,7 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Op
 
     // Save raw error response for debugging
     if let Some(raw) = raw_error_response {
+        tracing::info!("[mark_account_forbidden] Saving raw_error_response: {}", raw);
         account.raw_error_response = Some(raw.to_string());
     }
 

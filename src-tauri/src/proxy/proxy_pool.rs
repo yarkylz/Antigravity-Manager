@@ -371,16 +371,14 @@ impl ProxyPoolManager {
             .map_err(|e| format!("Invalid proxy URL: {}", e))?;
 
         // 提取 username/password из URL (если есть)
-        // parsed_url.username() -> Option<&str>
+        // url::Url::username() возвращает &str (пустую строку если нет username)
+        // url::Url::password() возвращает Option<&str>
         let embedded_auth: Option<(String, String)>;
-        if let Some(u) = parsed_url.username() {
-            if !u.is_empty() {
-                if let Some(p) = parsed_url.password() {
-                    if !p.is_empty() {
-                        embedded_auth = Some((u.to_string(), p.to_string()));
-                    } else {
-                        embedded_auth = None;
-                    }
+        let u = parsed_url.username();
+        if !u.is_empty() {
+            if let Some(p) = parsed_url.password() {
+                if !p.is_empty() {
+                    embedded_auth = Some((u.to_string(), p.to_string()));
                 } else {
                     embedded_auth = None;
                 }

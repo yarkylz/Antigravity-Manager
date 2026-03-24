@@ -855,6 +855,7 @@ pub async fn fetch_quota_with_cache(
                         q.is_forbidden = true;
                         q.subscription_tier = subscription_tier.clone();
                         q.restriction_reason = restriction_reason.clone();
+                        q.validation_url = validation_url.clone();
                         return Ok((q, project_id.clone()));
                     }
 

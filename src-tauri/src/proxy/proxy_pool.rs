@@ -371,13 +371,25 @@ impl ProxyPoolManager {
             .map_err(|e| format!("Invalid proxy URL: {}", e))?;
 
         // 提取 username/password из URL (если есть)
-        // parsed_url.username() возвращает Option<&str>
-        let embedded_auth: Option<(String, String)> = parsed_url.username()
-            .and_then(|u| if u.is_empty() { None } else { Some(u.to_string()) })
-            .and_then(|username| {
-                parsed_url.password()
-                    .and_then(|p| if p.is_empty() { None } else { Some((username, p.to_string())) })
-            });
+        // parsed_url.username() -> Option<&str>
+        let embedded_auth: Option<(String, String)>;
+        if let Some(u) = parsed_url.username() {
+            if !u.is_empty() {
+                if let Some(p) = parsed_url.password() {
+                    if !p.is_empty() {
+                        embedded_auth = Some((u.to_string(), p.to_string()));
+                    } else {
+                        embedded_auth = None;
+                    }
+                } else {
+                    embedded_auth = None;
+                }
+            } else {
+                embedded_auth = None;
+            }
+        } else {
+            embedded_auth = None;
+        }
 
         // 构建 URL без credentials (rquest::Proxy::all не должен получать URL с credentials в пути)
         let clean_url = if embedded_auth.is_some() {
@@ -395,8 +407,8 @@ impl ProxyPoolManager {
         // 添加认证 - 优先使用 entry.auth, 否则使用 embedded credentials
         if let Some(auth) = &entry.auth {
             proxy = proxy.basic_auth(&auth.username, &auth.password);
-        } else if let Some((username, password)) = embedded_auth {
-            proxy = proxy.basic_auth(&username, &password);
+        } else if let Some((ref username, ref password)) = embedded_auth {
+            proxy = proxy.basic_auth(username, password);
         }
 
         Ok(PoolProxyConfig {

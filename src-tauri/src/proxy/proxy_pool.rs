@@ -248,6 +248,8 @@ impl ProxyPoolManager {
     }
 
     /// 获取账号绑定的代理
+    /// [FIX] Если у аккаунта есть привязанный прокси, но он unhealthy - возвращаем ошибку,
+    /// чтобы предотвратить fallback на direct/upstream (критично для безопасности)
     async fn get_bound_proxy(
         &self,
         account_id: &str,
@@ -256,9 +258,12 @@ impl ProxyPoolManager {
         if let Some(proxy_id) = self.account_bindings.get(account_id) {
             if let Some(entry) = config.proxies.iter().find(|p| p.id == *proxy_id.value()) {
                 if entry.enabled {
-                    // 如果开启了自动故障转移且代理不健康，则返回 None (将回退到其他策略或失败)
-                    if config.auto_failover && !entry.is_healthy {
-                        return Ok(None);
+                    // [FIX] Если привязанный прокси unhealthy - возвращаем ошибку, не fallback
+                    if !entry.is_healthy {
+                        return Err(format!(
+                            "Account {} has bound proxy {} which is unhealthy (timeout). Request blocked for security.",
+                            account_id, entry.id
+                        ));
                     }
                     return Ok(Some(self.build_proxy_config(entry)?));
                 }
@@ -357,15 +362,36 @@ impl ProxyPoolManager {
     }
 
     /// 构建 reqwest::Proxy 配置
+    /// [FIX] 支持从 URL 中提取 embedded credentials (http://user:pass@host:port)
     fn build_proxy_config(&self, entry: &ProxyEntry) -> Result<PoolProxyConfig, String> {
-        let url = crate::proxy::config::normalize_proxy_url(&entry.url);
+        let url_str = crate::proxy::config::normalize_proxy_url(&entry.url);
+
+        // 解析 URL 以提取 embedded credentials
+        let parsed_url = url::Url::parse(&url_str)
+            .map_err(|e| format!("Invalid proxy URL: {}", e))?;
+
+        // 提取 username/password  из URL (если есть)
+        let embedded_auth = parsed_url.username().map(|u| u.to_string()).filter(|u| !u.is_empty())
+            .zip(parsed_url.password().map(|p| p.to_string()));
+
+        // 构建 URL без credentials (rquest::Proxy::all не должен получать URL с credentials в пути)
+        let clean_url = if embedded_auth.is_some() {
+            let mut url_without_auth = parsed_url.clone();
+            url_without_auth.set_username("").ok();
+            url_without_auth.set_password(None).ok();
+            url_without_auth.to_string()
+        } else {
+            url_str
+        };
 
         let mut proxy =
-            rquest::Proxy::all(&url).map_err(|e| format!("Invalid proxy URL: {}", e))?;
+            rquest::Proxy::all(&clean_url).map_err(|e| format!("Invalid proxy URL: {}", e))?;
 
-        // 添加认证
+        // 添加认证 - 优先使用 entry.auth, 否则使用 embedded credentials
         if let Some(auth) = &entry.auth {
             proxy = proxy.basic_auth(&auth.username, &auth.password);
+        } else if let Some((username, password)) = embedded_auth {
+            proxy = proxy.basic_auth(&username, &password);
         }
 
         Ok(PoolProxyConfig {

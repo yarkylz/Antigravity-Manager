@@ -899,7 +899,7 @@ pub async fn fetch_quota_with_cache(
                 // Use debug level for detailed info to avoid console noise
                 tracing::debug!("Quota API returned {} models", quota_response.models.len());
 
-                for (name, info) in quota_response.models {
+                for (name, info) in &quota_response.models {
                     if let Some(quota_info) = info.quota_info {
                         let percentage = quota_info
                             .remaining_fraction

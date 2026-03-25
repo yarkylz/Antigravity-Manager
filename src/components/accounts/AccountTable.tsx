@@ -76,7 +76,7 @@ interface AccountTableProps {
     onExport: (accountId: string) => void;
     onDelete: (accountId: string) => void;
     onToggleProxy: (accountId: string) => void;
-    onBindProxy?: (proxyId: string | null) => void;
+    onBindProxy?: (accountId: string, proxyId: string | null) => void;
     onWarmup?: (accountId: string) => void;
     onUpdateLabel?: (accountId: string, label: string) => void;
     /** 拖拽排序回调，当用户完成拖拽时触发 */
@@ -365,7 +365,7 @@ function AccountRowContent({
 
     const handleSelectProxy = (proxyId: string | null) => {
         if (_onBindProxy) {
-            _onBindProxy(proxyId);
+            _onBindProxy(account.id, proxyId);
         }
         setShowProxyDropdown(false);
     };
@@ -933,7 +933,7 @@ function AccountTable({
                                     onExport={() => onExport(account.id)}
                                     onDelete={() => onDelete(account.id)}
                                     onToggleProxy={() => onToggleProxy(account.id)}
-                                    onBindProxy={onBindProxy ? (proxyId: string | null) => onBindProxy(proxyId) : undefined}
+                                    onBindProxy={onBindProxy ? (proxyId: string | null) => onBindProxy(account.id, proxyId) : undefined}
                                     onWarmup={onWarmup ? () => onWarmup(account.id) : undefined}
                                     onUpdateLabel={onUpdateLabel ? (label: string) => onUpdateLabel(account.id, label) : undefined}
                                     onViewError={() => onViewError(account.id)}

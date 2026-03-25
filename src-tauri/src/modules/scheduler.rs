@@ -114,11 +114,12 @@ pub fn start_scheduler(
                         "[Scheduler] Account {} returned 403 Forbidden during quota fetch, marking as forbidden",
                         account.email
                     ));
+                    let raw_error = fresh_quota.forbidden_reason.clone();
                     let _ = account::mark_account_forbidden(
                         &account.id,
                         "Scheduler: 403 Forbidden - quota fetch denied",
                         None,
-                        None,
+                        raw_error.as_deref(),
                     );
                     continue;
                 }
@@ -327,11 +328,12 @@ pub async fn trigger_warmup_for_account(account: &Account) {
             "[Scheduler] Account {} returned 403 Forbidden during quota fetch, marking as forbidden",
             account.email
         ));
+        let raw_error = fresh_quota.forbidden_reason.clone();
         let _ = account::mark_account_forbidden(
             &account.id,
             "Scheduler: 403 Forbidden - quota fetch denied",
             None,
-            None,
+            raw_error.as_deref(),
         );
         return;
     }

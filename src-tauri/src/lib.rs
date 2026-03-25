@@ -380,10 +380,18 @@ pub fn run() {
                         upstream_proxy_arc.clone(),
                     );
                     
-                    // Start health check on global pool - this is CRITICAL for OAuth to work properly
-                    // Even if AxumServer also starts one, the OnceLock ensures only one pool exists
+                    // [FIX] Run health check SYNCHRONOUSLY before any account operations
+                    // This ensures all proxies are checked before work starts
+                    info!("Running initial proxy health check...");
+                    if let Err(e) = proxy_pool_manager.health_check().await {
+                        error!("Initial health check failed: {}", e);
+                    } else {
+                        info!("Initial proxy health check completed");
+                    }
+                    
+                    // Start background health check loop for periodic checks
                     proxy_pool_manager.clone().start_health_check_loop();
-                    info!("Proxy pool initialized with health check");
+                    info!("Proxy pool initialized, background health check started");
 
                     // 修改 config，让 AxumServer 使用相同的配置
                     let mut modified_config = config.proxy.clone();

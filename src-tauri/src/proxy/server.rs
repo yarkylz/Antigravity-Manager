@@ -1519,6 +1519,12 @@ async fn admin_get_proxy_pool_config(
 async fn admin_get_all_account_bindings(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    // [FIX] Use global proxy pool
+    if let Some(pool) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        let bindings = pool.get_all_bindings_snapshot();
+        return Ok(Json(bindings));
+    }
+    // Fallback
     let bindings = state.proxy_pool_manager.get_all_bindings_snapshot();
     Ok(Json(bindings))
 }
@@ -1535,16 +1541,30 @@ async fn admin_bind_account_proxy(
     State(state): State<AppState>,
     Json(payload): Json<BindAccountProxyRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .proxy_pool_manager
-        .bind_account_to_proxy(payload.account_id, payload.proxy_id)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: e }),
-            )
-        })?;
+    // [FIX] Use global proxy pool for consistency
+    if let Some(pool) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        tracing::info!("[API Bind] Using global proxy pool");
+        pool.bind_account_to_proxy(payload.account_id, payload.proxy_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: e }),
+                )
+            })?;
+    } else {
+        tracing::warn!("[API Bind] Global pool not found, using instance pool");
+        state
+            .proxy_pool_manager
+            .bind_account_to_proxy(payload.account_id, payload.proxy_id)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(ErrorResponse { error: e }),
+                )
+            })?;
+    }
     Ok(StatusCode::OK)
 }
 
@@ -1559,10 +1579,17 @@ async fn admin_unbind_account_proxy(
     State(state): State<AppState>,
     Json(payload): Json<UnbindAccountProxyRequest>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    state
-        .proxy_pool_manager
-        .unbind_account_proxy(payload.account_id)
-        .await;
+    // [FIX] Use global proxy pool for consistency
+    if let Some(pool) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        tracing::info!("[API Unbind] Using global proxy pool");
+        pool.unbind_account_proxy(payload.account_id).await;
+    } else {
+        tracing::warn!("[API Unbind] Global pool not found, using instance pool");
+        state
+            .proxy_pool_manager
+            .unbind_account_proxy(payload.account_id)
+            .await;
+    }
     Ok(StatusCode::OK)
 }
 
@@ -1571,6 +1598,12 @@ async fn admin_get_account_proxy_binding(
     State(state): State<AppState>,
     Path(account_id): Path<String>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    // [FIX] Use global proxy pool
+    if let Some(pool) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        let binding = pool.get_account_binding(&account_id);
+        return Ok(Json(binding));
+    }
+    // Fallback
     let binding = state.proxy_pool_manager.get_account_binding(&account_id);
     Ok(Json(binding))
 }

@@ -806,6 +806,24 @@ pub async fn fetch_quota_with_cache(
         q.subscription_tier = subscription_tier.clone();
         q.restriction_reason = restriction_reason.clone();
         q.validation_url = validation_url.clone();
+        // [FIX] Also set forbidden_reason to full JSON with error details for Show Raw
+        if let Some(ref reason) = restriction_reason {
+            let error_json = json!({
+                "error": {
+                    "code": 403,
+                    "message": reason,
+                    "status": "FORBIDDEN",
+                    "details": [{
+                        "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                        "reason": "ACCESS_BLOCKED",
+                        "metadata": {
+                            "validation_url": validation_url.clone().unwrap_or_default()
+                        }
+                    }]
+                }
+            });
+            q.forbidden_reason = Some(error_json.to_string());
+        }
         return Ok((q, None));
     }
 

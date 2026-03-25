@@ -764,8 +764,9 @@ pub async fn check_proxy_health(
     // [FIX] Use global proxy pool - this is what health check updates
     if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
         manager.health_check().await?;
-        let config = manager.config().read().await;
-        Ok(config.clone())
+        let config = manager.config();
+        let pool_config = config.read().await;
+        Ok(pool_config.clone())
     } else {
         // Fallback to old behavior
         let instance_lock = state.instance.read().await;
@@ -786,8 +787,9 @@ pub async fn get_proxy_pool_config(
 ) -> Result<ProxyPoolConfig, String> {
     // [FIX] Read from global proxy pool - this is what health check updates
     if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
-        let config = manager.config().read().await;
-        Ok(config.clone())
+        let config = manager.config();
+        let pool_config = config.read().await;
+        Ok(pool_config.clone())
     } else {
         // Fallback to old behavior
         let instance_lock = state.instance.read().await;

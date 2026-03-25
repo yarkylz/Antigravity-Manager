@@ -318,14 +318,18 @@ impl AxumServer {
         
         // [FIX] Use global proxy pool's config instead of creating a new one
         // This ensures health check updates the same config that frontend reads from
-        let (proxy_pool_state, proxy_pool_manager) = if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
-            let state = manager.config.clone();
-            (state, manager)
+        let proxy_pool_state: Arc<tokio::sync::RwLock<crate::proxy::config::ProxyPoolConfig>>;
+        let proxy_pool_manager: Arc<crate::proxy::proxy_pool::ProxyPoolManager>;
+        
+        if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+            proxy_pool_state = manager.config();
+            proxy_pool_manager = manager;
         } else {
             // Fallback: create new if global not initialized (shouldn't happen)
             let state = Arc::new(tokio::sync::RwLock::new(proxy_pool_config));
             let manager = crate::proxy::proxy_pool::init_global_proxy_pool(state.clone(), proxy_state.clone());
-            (state, manager)
+            proxy_pool_state = state;
+            proxy_pool_manager = manager;
         };
 
         // Health check is already started by lib.rs, no need to start again

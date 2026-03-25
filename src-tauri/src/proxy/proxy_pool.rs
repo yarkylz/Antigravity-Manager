@@ -51,6 +51,11 @@ pub struct ProxyPoolManager {
 }
 
 impl ProxyPoolManager {
+    /// Get the config Arc - needed for syncing frontend with health check
+    pub fn config(&self) -> Arc<RwLock<ProxyPoolConfig>> {
+        self.config.clone()
+    }
+
     pub fn new(config: Arc<RwLock<ProxyPoolConfig>>, upstream_proxy: Option<Arc<RwLock<UpstreamProxyConfig>>>) -> Self {
         // 从配置中加载已保存的绑定关系
         let account_bindings = Arc::new(DashMap::new());

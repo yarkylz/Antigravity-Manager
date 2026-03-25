@@ -1169,10 +1169,8 @@ function Accounts() {
                     !!accounts.find((a) => a.id === id)?.proxy_disabled,
                   )
                 }
-              onBindProxy={(proxyId: string | null) => {
-                const firstSelectedId = Array.from(selectedIds)[0];
-                const account = accounts.find((a) => a.id === firstSelectedId);
-                if (account) handleBindProxy(account.id, proxyId);
+              onBindProxy={(accountId, proxyId) => {
+                handleBindProxy(accountId, proxyId);
               }}
               onReorder={reorderAccounts}
                 onWarmup={handleWarmup}
@@ -1204,10 +1202,8 @@ function Accounts() {
                   !!accounts.find((a) => a.id === id)?.proxy_disabled,
                 )
               }
-              onBindProxy={(proxyId) => {
-                const firstSelectedId = Array.from(selectedIds)[0];
-                const account = paginatedAccounts.find((a) => a.id === firstSelectedId);
-                if (account) handleBindProxy(account.id, proxyId);
+              onBindProxy={(accountId, proxyId) => {
+                handleBindProxy(accountId, proxyId);
               }}
               onWarmup={handleWarmup}
               onUpdateLabel={handleUpdateLabel}

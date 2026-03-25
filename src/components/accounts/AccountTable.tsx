@@ -47,6 +47,7 @@ import {
     TestTube2,
     AlertTriangle,
     Globe,
+    ChevronDown,
 } from 'lucide-react';
 import { Account } from '../../types/account';
 import { useTranslation } from 'react-i18next';
@@ -323,7 +324,7 @@ function AccountRowContent({
     onExport,
     onDelete,
     onToggleProxy,
-    onBindProxy,
+    onBindProxy: _onBindProxy,
     onWarmup,
     onUpdateLabel,
     onViewError,
@@ -355,6 +356,18 @@ function AccountRowContent({
         } else if (e.key === 'Escape') {
             handleCancelLabel();
         }
+    };
+
+    // Proxy selector dropdown
+    const [showProxyDropdown, setShowProxyDropdown] = useState(false);
+    const proxies = config?.proxy?.proxy_pool?.proxies || [];
+    const currentProxy = proxies.find((p) => p.id === account.proxy_id);
+
+    const handleSelectProxy = (proxyId: string | null) => {
+        if (_onBindProxy) {
+            _onBindProxy(proxyId);
+        }
+        setShowProxyDropdown(false);
     };
 
     // 使用统一的模型配置
@@ -511,19 +524,69 @@ function AccountRowContent({
                                 {account.custom_label}
                             </span>
                         )}
-                        {/* 绑定代理 */}
-                        {account.proxy_id && (() => {
-                            const proxy = config?.proxy?.proxy_pool?.proxies?.find((p) => p.id === account.proxy_id);
+                        {/* 绑定代理 - dropdown */}
+                        {(() => {
+                            const proxy = currentProxy;
                             return proxy ? (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[10px] font-bold shadow-sm border border-teal-200/50 dark:border-teal-800/50" title={proxy.url}>
-                                    <Globe className="w-2.5 h-2.5" />
-                                    {proxy.name || proxy.id}
-                                </span>
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setShowProxyDropdown(!showProxyDropdown); }}
+                                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[10px] font-bold shadow-sm border border-teal-200/50 dark:border-teal-800/50 hover:opacity-80"
+                                        title={proxy.url}
+                                    >
+                                        <Globe className="w-2.5 h-2.5" />
+                                        {proxy.name || proxy.id}
+                                        <ChevronDown className="w-2.5 h-2.5" />
+                                    </button>
+                                    {showProxyDropdown && proxies.length > 0 && (
+                                        <div className="absolute z-50 top-full left-0 mt-1 w-40 max-h-40 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); handleSelectProxy(null); }}
+                                                className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+                                            >
+                                                🚫 Unbind
+                                            </button>
+                                            {proxies.filter(p => p.enabled).map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); handleSelectProxy(p.id); }}
+                                                    className={p.id === account.proxy_id ? "w-full px-2 py-1 text-left text-xs bg-teal-100 dark:bg-teal-900/40 text-teal-700" : "w-full px-2 py-1 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700"}
+                                                >
+                                                    {p.name || p.id.slice(0, 8)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             ) : (
-                                <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[10px] font-bold shadow-sm border border-red-200/50 dark:border-red-800/50" title={`Proxy ${account.proxy_id} not found`}>
-                                    <Globe className="w-2.5 h-2.5" />
-                                    ???
-                                </span>
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={(e) => { e.stopPropagation(); setShowProxyDropdown(!showProxyDropdown); }}
+                                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[10px] font-bold shadow-sm border border-gray-200 dark:border-gray-700 hover:opacity-80"
+                                    >
+                                        <Globe className="w-2.5 h-2.5" />
+                                        No proxy
+                                        <ChevronDown className="w-2.5 h-2.5" />
+                                    </button>
+                                    {showProxyDropdown && proxies.length > 0 && (
+                                        <div className="absolute z-50 top-full left-0 mt-1 w-40 max-h-40 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+                                            {proxies.filter(p => p.enabled).map((p) => (
+                                                <button
+                                                    key={p.id}
+                                                    type="button"
+                                                    onClick={(e) => { e.stopPropagation(); handleSelectProxy(p.id); }}
+                                                    className="w-full px-2 py-1 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700"
+                                                >
+                                                    {p.name || p.id.slice(0, 8)}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             );
                         })()}
                         {/* 标签编辑输入框 */}

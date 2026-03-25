@@ -13,8 +13,10 @@ pub async fn bind_account_proxy(
 ) -> Result<(), String> {
     // Use global proxy pool for consistency
     if let Some(pool) = proxy_pool::get_global_proxy_pool() {
+        tracing::info!("[Bind] Using global proxy pool to bind {} -> {}", account_id, proxy_id);
         pool.bind_account_to_proxy(account_id, proxy_id).await
     } else {
+        tracing::warn!("[Bind] Global proxy pool not initialized, using fallback");
         // Fallback to instance pool if global not initialized
         let instance_lock = state.instance.read().await;
         if let Some(instance) = instance_lock.as_ref() {

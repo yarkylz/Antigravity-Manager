@@ -896,11 +896,19 @@ pub async fn fetch_quota_with_cache(
 
                 let mut quota_data = QuotaData::new();
 
+                // [FIX] Save full API response as forbidden_reason when there's a restriction
+                // This ensures Show Raw can display the complete JSON response
+                // Save BEFORE iterating so we don't have borrow issues
+                let raw_quota_json = if restriction_reason.is_some() {
+                    serde_json::to_string(&quota_response).ok()
+                } else {
+                    None
+                };
+
                 // Use debug level for detailed info to avoid console noise
                 tracing::debug!("Quota API returned {} models", quota_response.models.len());
 
-                for (name, info) in &quota_response.models {
-                    if let Some(quota_info) = info.quota_info {
+                for (name, info) in quota_response.models {
                         let percentage = quota_info
                             .remaining_fraction
                             .map(|f| (f * 100.0) as i32)
@@ -916,7 +924,7 @@ pub async fn fetch_quota_with_cache(
                             || name.starts_with("imagen")
                         {
                             let model_quota = crate::models::quota::ModelQuota {
-                                name: name.clone(),
+                                name,
                                 percentage,
                                 reset_time,
                                 display_name: info.display_name,
@@ -934,7 +942,7 @@ pub async fn fetch_quota_with_cache(
                 }
 
                 // Parse deprecated model routing rules
-                if let Some(deprecated) = quota_response.deprecated_model_ids {
+                if let Some(deprecated) = &quota_response.deprecated_model_ids {
                     for (old_id, info) in deprecated {
                         quota_data
                             .model_forwarding_rules
@@ -947,12 +955,9 @@ pub async fn fetch_quota_with_cache(
                 quota_data.restriction_reason = restriction_reason.clone();
                 quota_data.validation_url = validation_url.clone();
 
-                // [FIX] Save full API response as forbidden_reason when there's a restriction
-                // This ensures Show Raw can display the complete JSON response
-                if restriction_reason.is_some() {
-                    if let Ok(raw_json) = serde_json::to_string(&quota_response) {
-                        quota_data.forbidden_reason = Some(raw_json);
-                    }
+                // Apply saved raw JSON if restriction exists
+                if let Some(raw_json) = raw_quota_json {
+                    quota_data.forbidden_reason = Some(raw_json);
                 }
 
                 persist_project_id_for_account(account_id, project_id.as_deref())

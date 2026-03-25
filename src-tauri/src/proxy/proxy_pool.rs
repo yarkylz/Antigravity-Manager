@@ -724,19 +724,23 @@ impl ProxyPoolManager {
         match client.get(check_url).send().await {
             Ok(resp) => {
                 let latency = start.elapsed().as_millis() as u64;
-                if resp.status().is_success() {
+                let status = resp.status();
+                
+                // [FIX] Treat redirects (301/302/303/307/308) as healthy - proxy is working!
+                // These are normal responses from proxies that redirect to the final destination
+                if status.is_success() || status.is_redirection() {
                     tracing::info!(
                         "[HealthCheck] Proxy {} is healthy ({}ms, status: {})",
                         entry.url,
                         latency,
-                        resp.status()
+                        status
                     );
                     (true, Some(latency))
                 } else {
                     tracing::warn!(
                         "[HealthCheck] Proxy {} status error: {} (latency: {}ms)",
                         entry.url,
-                        resp.status(),
+                        status,
                         latency
                     );
                     (false, None)

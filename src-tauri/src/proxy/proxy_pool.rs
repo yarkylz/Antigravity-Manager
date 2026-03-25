@@ -782,19 +782,26 @@ impl ProxyPoolManager {
         tokio::spawn(async move {
             tracing::info!("Starting proxy pool health check loop...");
             loop {
-                // Perform check only if enabled
-                let enabled = self.config.read().await.enabled;
-                if enabled {
+                // [FIX] Always run health check on startup to update proxy status
+                // Don't skip just because "enabled" is false - proxies might exist and need status update
+                let config = self.config.read().await;
+                let enabled = config.enabled;
+                let has_proxies = !config.proxies.is_empty();
+                drop(config);
+                
+                if has_proxies {
                     if let Err(e) = self.health_check().await {
                         tracing::error!("Proxy pool health check failed: {}", e);
                     }
+                } else {
+                    tracing::debug!("No proxies in pool, skipping health check");
                 }
 
                 // Get interval and sleep AFTER check
                 let interval_secs = {
                     let cfg = self.config.read().await;
-                    if !cfg.enabled {
-                        60 // check every minute if disabled
+                    if !cfg.enabled || cfg.proxies.is_empty() {
+                        60 // check every minute if disabled or empty
                     } else {
                         cfg.health_check_interval.max(30) // Back to default min 30s
                     }

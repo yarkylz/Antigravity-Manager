@@ -1504,6 +1504,13 @@ async fn admin_save_config(
 async fn admin_get_proxy_pool_config(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    // [FIX] Read from global proxy pool to get current health check status
+    if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        let config = manager.config();
+        let pool_config = config.read().await;
+        return Ok(Json(pool_config.clone()));
+    }
+    // Fallback
     let config = state.proxy_pool_state.read().await;
     Ok(Json(config.clone()))
 }
@@ -1572,6 +1579,25 @@ async fn admin_get_account_proxy_binding(
 async fn admin_trigger_proxy_health_check(
     State(state): State<AppState>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    // [FIX] Use global proxy pool for health check
+    if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        manager.health_check().await.map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e }),
+            )
+        })?;
+        
+        let config = manager.config();
+        let pool_config = config.read().await;
+        return Ok(Json(serde_json::json!({
+            "success": true,
+            "message": "Health check completed",
+            "proxies": pool_config.proxies,
+        })));
+    }
+    
+    // Fallback to old behavior
     state.proxy_pool_manager.health_check().await.map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,

@@ -373,13 +373,17 @@ pub fn run() {
                     let proxy_pool_arc = Arc::new(tokio::sync::RwLock::new(proxy_pool_config));
                     let upstream_proxy_arc = Arc::new(tokio::sync::RwLock::new(upstream_proxy_config));
                     
-                    // [REMOVED] Early init - now handled by AxumServer to ensure same config
-                    // This ensures health check uses the same proxy pool state that frontend reads from
-                    let _proxy_pool_manager = crate::proxy::proxy_pool::init_global_proxy_pool(
+                    // Initialize global proxy pool - this is what OAuth and other modules use
+                    // AxumServer will use the same config (via OnceLock)
+                    let proxy_pool_manager = crate::proxy::proxy_pool::init_global_proxy_pool(
                         proxy_pool_arc.clone(),
                         upstream_proxy_arc.clone(),
                     );
-                    info!("Proxy pool config prepared for AxumServer initialization");
+                    
+                    // Start health check on global pool - this is CRITICAL for OAuth to work properly
+                    // Even if AxumServer also starts one, the OnceLock ensures only one pool exists
+                    proxy_pool_manager.clone().start_health_check_loop();
+                    info!("Proxy pool initialized with health check");
 
                     // 修改 config，让 AxumServer 使用相同的配置
                     let mut modified_config = config.proxy.clone();

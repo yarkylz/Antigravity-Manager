@@ -231,87 +231,77 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                     {account.custom_label}
                                 </span>
                             )}
-                            {/* 绑定代理 */}
-                            {account.proxy_id && (() => {
-                                const proxies = config?.proxy?.proxy_pool?.proxies;
-                                const proxy = proxies?.find((p) => p.id === account.proxy_id);
+                            {/* 绑定代理 - всегда показываем кнопку */}
+                            {(() => {
+                                const proxies = config?.proxy?.proxy_pool?.proxies || [];
+                                const proxy = proxies.find((p) => p.id === account.proxy_id);
+                                const enabledProxies = proxies.filter(p => p.enabled);
                                 
-                                // If proxy_id exists but proxies not configured, show ID
-                                if (!proxies || proxies.length === 0) {
+                                // Если прокси привязан
+                                if (proxy) {
                                     return (
-                                        <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-[9px] font-bold shadow-sm border border-gray-200 dark:border-gray-700" title={`Proxy ID: ${account.proxy_id}`}>
-                                            <Globe className="w-2.5 h-2.5" />
-                                            {account.proxy_id.slice(0, 8)}
-                                        </span>
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => { e.stopPropagation(); setShowProxyDropdown(!showProxyDropdown); }}
+                                                className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[9px] font-bold shadow-sm border border-teal-200/50 dark:border-teal-800/50 hover:opacity-80"
+                                                title={proxy.url}
+                                            >
+                                                <Globe className="w-2.5 h-2.5" />
+                                                {proxy.name || proxy.id}
+                                                <ChevronDown className="w-2.5 h-2.5" />
+                                            </button>
+                                            {showProxyDropdown && enabledProxies.length > 0 && (
+                                                <div className="absolute z-50 top-full left-0 mt-1 w-48 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => { e.stopPropagation(); handleSelectProxy(null); }}
+                                                        className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+                                                    >
+                                                        🚫 Unbind / Отвязать
+                                                    </button>
+                                                    {enabledProxies.map((p) => (
+                                                        <button
+                                                            key={p.id}
+                                                            type="button"
+                                                            onClick={(e) => { e.stopPropagation(); handleSelectProxy(p.id); }}
+                                                            className={cn(
+                                                                "w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700",
+                                                                p.id === account.proxy_id ? "bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-300"
+                                                            )}
+                                                        >
+                                                            {p.name || p.id}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                     );
                                 }
                                 
-                                return proxy ? (
+                                // Если прокси НЕ привязан - показываем кнопку для привязки
+                                return (
                                     <div className="relative">
                                         <button
                                             type="button"
                                             onClick={(e) => { e.stopPropagation(); setShowProxyDropdown(!showProxyDropdown); }}
-                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[9px] font-bold shadow-sm border border-teal-200/50 dark:border-teal-800/50 hover:opacity-80"
-                                            title={proxy.url}
-                                        >
-                                            <Globe className="w-2.5 h-2.5" />
-                                            {proxy.name || proxy.id}
-                                            <ChevronDown className="w-2.5 h-2.5" />
-                                        </button>
-                                        {showProxyDropdown && proxies.length > 0 && (
-                                            <div className="absolute z-50 top-full left-0 mt-1 w-48 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); handleSelectProxy(null); }}
-                                                    className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
-                                                >
-                                                    🚫 Unbind / Отвязать
-                                                </button>
-                                                {proxies.filter(p => p.enabled).map((p) => (
-                                                    <button
-                                                        key={p.id}
-                                                        type="button"
-                                                        onClick={(e) => { e.stopPropagation(); handleSelectProxy(p.id); }}
-                                                        className={cn(
-                                                            "w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700",
-                                                            p.id === account.proxy_id ? "bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-300"
-                                                        )}
-                                                    >
-                                                        {p.name || p.id.slice(0, 8)}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="relative">
-                                        <button
-                                            type="button"
-                                            onClick={(e) => { e.stopPropagation(); setShowProxyDropdown(!showProxyDropdown); }}
-                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[9px] font-bold shadow-sm border border-gray-200 dark:border-gray-700 hover:opacity-80"
+                                            className="flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 text-[9px] font-bold shadow-sm border border-gray-200 dark:border-gray-700 hover:opacity-80"
                                             title="Click to bind proxy"
                                         >
                                             <Globe className="w-2.5 h-2.5" />
-                                            No proxy
+                                            + Proxy
                                             <ChevronDown className="w-2.5 h-2.5" />
                                         </button>
-                                        {showProxyDropdown && proxies.length > 0 && (
+                                        {showProxyDropdown && enabledProxies.length > 0 && (
                                             <div className="absolute z-50 top-full left-0 mt-1 w-48 max-h-48 overflow-y-auto bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1">
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => { e.stopPropagation(); handleSelectProxy(null); }}
-                                                    className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
-                                                >
-                                                    🚫 No proxy / Без прокси
-                                                </button>
-                                                {proxies.filter(p => p.enabled).map((p) => (
+                                                {enabledProxies.map((p) => (
                                                     <button
                                                         key={p.id}
                                                         type="button"
                                                         onClick={(e) => { e.stopPropagation(); handleSelectProxy(p.id); }}
                                                         className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                                                     >
-                                                        {p.name || p.id.slice(0, 8)}
+                                                        {p.name || p.id}
                                                     </button>
                                                 ))}
                                             </div>

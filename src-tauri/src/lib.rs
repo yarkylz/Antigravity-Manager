@@ -373,13 +373,13 @@ pub fn run() {
                     let proxy_pool_arc = Arc::new(tokio::sync::RwLock::new(proxy_pool_config));
                     let upstream_proxy_arc = Arc::new(tokio::sync::RwLock::new(upstream_proxy_config));
                     
-                    let proxy_pool_manager = crate::proxy::proxy_pool::init_global_proxy_pool(
+                    // [REMOVED] Early init - now handled by AxumServer to ensure same config
+                    // This ensures health check uses the same proxy pool state that frontend reads from
+                    let _proxy_pool_manager = crate::proxy::proxy_pool::init_global_proxy_pool(
                         proxy_pool_arc.clone(),
                         upstream_proxy_arc.clone(),
                     );
-                    // 立即启动健康检查
-                    proxy_pool_manager.clone().start_health_check_loop();
-                    info!("[FIX] Proxy pool initialized early with health check for account bindings");
+                    info!("Proxy pool config prepared for AxumServer initialization");
 
                     // 修改 config，让 AxumServer 使用相同的配置
                     let mut modified_config = config.proxy.clone();

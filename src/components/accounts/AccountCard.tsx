@@ -63,7 +63,6 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
 
     // Proxy selector dropdown state
     const [showProxyDropdown, setShowProxyDropdown] = useState(false);
-    const proxies = config?.proxy?.proxy_pool?.proxies || [];
 
     const handleSelectProxy = (proxyId: string | null) => {
         if (onBindProxy) {

@@ -1205,7 +1205,8 @@ function Accounts() {
                 )
               }
               onBindProxy={(proxyId) => {
-                const account = paginatedAccounts.find((a) => a.id === selectedIds[0]);
+                const firstSelectedId = Array.from(selectedIds)[0];
+                const account = paginatedAccounts.find((a) => a.id === firstSelectedId);
                 if (account) handleBindProxy(account.id, proxyId);
               }}
               onWarmup={handleWarmup}

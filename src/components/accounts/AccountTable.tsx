@@ -100,6 +100,7 @@ interface SortableRowProps {
     onExport: () => void;
     onDelete: () => void;
     onToggleProxy: () => void;
+    onBindProxy?: (proxyId: string | null) => void;
     onWarmup?: () => void;
     onUpdateLabel?: (label: string) => void;
     onViewError: () => void;
@@ -120,6 +121,7 @@ interface AccountRowContentProps {
     onExport: () => void;
     onDelete: () => void;
     onToggleProxy: () => void;
+    onBindProxy?: (proxyId: string | null) => void;
     onWarmup?: () => void;
     onUpdateLabel?: (label: string) => void;
     onViewError: () => void;
@@ -224,6 +226,7 @@ function SortableAccountRow({
     onExport,
     onDelete,
     onToggleProxy,
+    onBindProxy,
     onWarmup,
     onUpdateLabel,
     onViewError,
@@ -292,6 +295,7 @@ function SortableAccountRow({
                 onExport={onExport}
                 onDelete={onDelete}
                 onToggleProxy={onToggleProxy}
+                onBindProxy={onBindProxy}
                 onWarmup={onWarmup}
                 onUpdateLabel={onUpdateLabel}
                 onViewError={onViewError}
@@ -319,6 +323,7 @@ function AccountRowContent({
     onExport,
     onDelete,
     onToggleProxy,
+    onBindProxy,
     onWarmup,
     onUpdateLabel,
     onViewError,

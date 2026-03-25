@@ -75,12 +75,14 @@ impl ProxyPoolManager {
             }
             
             for (account_id, proxy_id) in &cfg.account_bindings {
+                tracing::info!("[ProxyPool] Loading binding: account {} -> proxy {}", account_id, proxy_id);
                 account_bindings.insert(account_id.clone(), proxy_id.clone());
             }
             if !cfg.account_bindings.is_empty() {
                 tracing::info!(
-                    "[ProxyPool] Loaded {} account bindings from config",
-                    cfg.account_bindings.len()
+                    "[ProxyPool] Loaded {} account bindings from config: {:?}",
+                    cfg.account_bindings.len(),
+                    cfg.account_bindings
                 );
             }
         } else {
@@ -319,6 +321,12 @@ impl ProxyPoolManager {
         account_id: &str,
         config: &ProxyPoolConfig,
     ) -> Result<Option<PoolProxyConfig>, String> {
+        // [DEBUG] Log all bindings when checking
+        let all_bindings: Vec<_> = self.account_bindings.iter().map(|kv| (kv.key().clone(), kv.value().clone())).collect();
+        if !all_bindings.is_empty() {
+            tracing::debug!("[Proxy] Checking binding for account {}, available bindings: {:?}", account_id, all_bindings);
+        }
+        
         if let Some(proxy_id) = self.account_bindings.get(account_id) {
             if let Some(entry) = config.proxies.iter().find(|p| p.id == *proxy_id.value()) {
                 if entry.enabled {

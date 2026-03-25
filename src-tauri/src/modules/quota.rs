@@ -947,6 +947,14 @@ pub async fn fetch_quota_with_cache(
                 quota_data.restriction_reason = restriction_reason.clone();
                 quota_data.validation_url = validation_url.clone();
 
+                // [FIX] Save full API response as forbidden_reason when there's a restriction
+                // This ensures Show Raw can display the complete JSON response
+                if restriction_reason.is_some() {
+                    if let Ok(raw_json) = serde_json::to_string(&quota_response) {
+                        quota_data.forbidden_reason = Some(raw_json);
+                    }
+                }
+
                 persist_project_id_for_account(account_id, project_id.as_deref())
                     .map_err(AppError::Account)?;
 

@@ -16,7 +16,7 @@ interface AccountGridProps {
     onExport: (accountId: string) => void;
     onDelete: (accountId: string) => void;
     onToggleProxy: (accountId: string) => void;
-    onBindProxy?: (proxyId: string | null) => void;
+    onBindProxy?: (accountId: string, proxyId: string | null) => void;
     onWarmup?: (accountId: string) => void;
     onUpdateLabel?: (accountId: string, label: string) => void;
     onViewError: (accountId: string) => void;
@@ -54,7 +54,7 @@ function AccountGrid({ accounts, selectedIds, refreshingIds, onToggleSelect, cur
                     onExport={() => onExport(account.id)}
                     onDelete={() => onDelete(account.id)}
                     onToggleProxy={() => onToggleProxy(account.id)}
-                    onBindProxy={onBindProxy ? (proxyId: string | null) => onBindProxy(proxyId) : undefined}
+                    onBindProxy={onBindProxy ? (proxyId: string | null) => onBindProxy(account.id, proxyId) : undefined}
                     onWarmup={onWarmup ? () => onWarmup(account.id) : undefined}
                     onUpdateLabel={onUpdateLabel ? (label: string) => onUpdateLabel(account.id, label) : undefined}
                     onViewError={() => onViewError(account.id)}

@@ -468,6 +468,25 @@ function Accounts() {
     setToggleProxyConfirm({ accountId, enable: currentlyDisabled });
   };
 
+  // Handle bind/unbind proxy from dropdown
+  const handleBindProxy = async (accountId: string, proxyId: string | null) => {
+    try {
+      if (proxyId) {
+        await invoke("bind_account_proxy", { accountId, proxyId });
+        showToast(`Proxy bound successfully / Прокси привязан`, "success");
+      } else {
+        await invoke("unbind_account_proxy", { accountId });
+        showToast(`Proxy unbound / Прокси отвязан`, "success");
+      }
+      // Refresh accounts to update UI
+      await loadAccounts();
+      await refreshConfig();
+    } catch (error) {
+      console.error("[Accounts] Bind proxy failed:", error);
+      showToast(`${t("common.error")}: ${error}`, "error");
+    }
+  };
+
   const executeToggleProxy = async () => {
     if (!toggleProxyConfirm) return;
 
@@ -1151,6 +1170,10 @@ function Accounts() {
                     !!accounts.find((a) => a.id === id)?.proxy_disabled,
                   )
                 }
+                onBindProxy={(proxyId) => {
+                  const account = accounts.find((a) => a.id === selectedIds[0]);
+                  if (account) handleBindProxy(account.id, proxyId);
+                }}
                 onReorder={reorderAccounts}
                 onWarmup={handleWarmup}
                 onUpdateLabel={handleUpdateLabel}
@@ -1181,6 +1204,10 @@ function Accounts() {
                   !!accounts.find((a) => a.id === id)?.proxy_disabled,
                 )
               }
+              onBindProxy={(proxyId) => {
+                const account = paginatedAccounts.find((a) => a.id === selectedIds[0]);
+                if (account) handleBindProxy(account.id, proxyId);
+              }}
               onWarmup={handleWarmup}
               onUpdateLabel={handleUpdateLabel}
               onViewError={(id: string) => setErrorAccountId(id)}

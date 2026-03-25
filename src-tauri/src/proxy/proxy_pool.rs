@@ -501,6 +501,10 @@ impl ProxyPoolManager {
         // 检查代理是否存在
         {
             let config = self.config.read().await;
+            tracing::info!("[Bind] Checking proxy {} in pool with {} proxies", proxy_id, config.proxies.len());
+            for p in &config.proxies {
+                tracing::info!("[Bind] Available proxy: {} -> {}", p.id, p.name);
+            }
             if !config.proxies.iter().any(|p| p.id == proxy_id) {
                 return Err(format!("Proxy {} not found", proxy_id));
             }

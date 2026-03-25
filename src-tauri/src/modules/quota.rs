@@ -916,7 +916,7 @@ pub async fn fetch_quota_with_cache(
                             || name.starts_with("imagen")
                         {
                             let model_quota = crate::models::quota::ModelQuota {
-                                name,
+                                name: name.clone(),
                                 percentage,
                                 reset_time,
                                 display_name: info.display_name,

@@ -479,8 +479,7 @@ function Accounts() {
         showToast(`Proxy unbound / Прокси отвязан`, "success");
       }
       // Refresh accounts to update UI
-      await loadAccounts();
-      await refreshConfig();
+      await fetchAccounts();
     } catch (error) {
       console.error("[Accounts] Bind proxy failed:", error);
       showToast(`${t("common.error")}: ${error}`, "error");
@@ -1170,11 +1169,12 @@ function Accounts() {
                     !!accounts.find((a) => a.id === id)?.proxy_disabled,
                   )
                 }
-                onBindProxy={(proxyId) => {
-                  const account = accounts.find((a) => a.id === selectedIds[0]);
-                  if (account) handleBindProxy(account.id, proxyId);
-                }}
-                onReorder={reorderAccounts}
+              onBindProxy={(proxyId: string | null) => {
+                const firstSelectedId = Array.from(selectedIds)[0];
+                const account = accounts.find((a) => a.id === firstSelectedId);
+                if (account) handleBindProxy(account.id, proxyId);
+              }}
+              onReorder={reorderAccounts}
                 onWarmup={handleWarmup}
                 onUpdateLabel={handleUpdateLabel}
                 onViewError={(id: string) => setErrorAccountId(id)}

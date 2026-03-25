@@ -761,17 +761,21 @@ pub async fn clear_all_proxy_rate_limits(
 pub async fn check_proxy_health(
     state: State<'_, ProxyServiceState>,
 ) -> Result<ProxyPoolConfig, String> {
-    let instance_lock = state.instance.read().await;
-    if let Some(instance) = instance_lock.as_ref() {
-        // [FIX] Use existing pool manager from axum_server instead of creating new instance
-        // This prevents losing account bindings when new manager is created
-        instance.axum_server.proxy_pool_manager.health_check().await?;
-
-        // Return the updated config from memory
-        let config = instance.axum_server.proxy_pool_state.read().await;
+    // [FIX] Use global proxy pool - this is what health check updates
+    if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        manager.health_check().await?;
+        let config = manager.config().read().await;
         Ok(config.clone())
     } else {
-        Err("服务未运行".to_string())
+        // Fallback to old behavior
+        let instance_lock = state.instance.read().await;
+        if let Some(instance) = instance_lock.as_ref() {
+            instance.axum_server.proxy_pool_manager.health_check().await?;
+            let config = instance.axum_server.proxy_pool_state.read().await;
+            Ok(config.clone())
+        } else {
+            Err("服务未运行".to_string())
+        }
     }
 }
 
@@ -780,11 +784,18 @@ pub async fn check_proxy_health(
 pub async fn get_proxy_pool_config(
     state: State<'_, ProxyServiceState>,
 ) -> Result<ProxyPoolConfig, String> {
-    let instance_lock = state.instance.read().await;
-    if let Some(instance) = instance_lock.as_ref() {
-        let config = instance.axum_server.proxy_pool_state.read().await;
+    // [FIX] Read from global proxy pool - this is what health check updates
+    if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        let config = manager.config().read().await;
         Ok(config.clone())
     } else {
-        Err("服务未运行".to_string())
+        // Fallback to old behavior
+        let instance_lock = state.instance.read().await;
+        if let Some(instance) = instance_lock.as_ref() {
+            let config = instance.axum_server.proxy_pool_state.read().await;
+            Ok(config.clone())
+        } else {
+            Err("服务未运行".to_string())
+        }
     }
 }

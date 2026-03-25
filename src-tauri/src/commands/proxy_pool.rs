@@ -11,22 +11,26 @@ pub async fn bind_account_proxy(
     account_id: String,
     proxy_id: String,
 ) -> Result<(), String> {
+    tracing::info!("[Bind] bind_account_proxy called: {} -> {}", account_id, proxy_id);
+    
     // Use global proxy pool for consistency
     if let Some(pool) = proxy_pool::get_global_proxy_pool() {
-        tracing::info!("[Bind] Using global proxy pool to bind {} -> {}", account_id, proxy_id);
+        tracing::info!("[Bind] Using global proxy pool");
         pool.bind_account_to_proxy(account_id, proxy_id).await
     } else {
-        tracing::warn!("[Bind] Global proxy pool not initialized, using fallback");
+        tracing::warn!("[Bind] Global proxy pool not initialized, checking instance...");
         // Fallback to instance pool if global not initialized
         let instance_lock = state.instance.read().await;
         if let Some(instance) = instance_lock.as_ref() {
+            tracing::info!("[Bind] Using instance proxy pool");
             instance
                 .axum_server
                 .proxy_pool_manager
                 .bind_account_to_proxy(account_id, proxy_id)
                 .await
         } else {
-            Err("Service not running".to_string())
+            tracing::error!("[Bind] No proxy pool available!");
+            Err("Proxy service not running. Please start the proxy service first.".to_string())
         }
     }
 }

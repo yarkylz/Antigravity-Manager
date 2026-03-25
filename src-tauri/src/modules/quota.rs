@@ -783,12 +783,9 @@ pub async fn fetch_quota_with_cache(
             .map(|q| (q.subscription_tier, q.restriction_reason, q.validation_url))
             .unwrap_or((None, None, None));
         
-        // If cached tier is None, do a fresh resolution to get the subscription tier
-        if cached_tier.is_none() {
-            fetch_project_id(access_token, email, account_id).await
-        } else {
-            (Some(pid), cached_tier, cached_reason, cached_validation_url)
-        }
+        // [FIX] Always do a fresh resolution to get the current subscription tier and restriction status
+        // This ensures we detect if the account now requires verification (even if it was fine before)
+        fetch_project_id(access_token, email, account_id).await
     } else {
         fetch_project_id(access_token, email, account_id).await
     };
@@ -974,9 +971,24 @@ pub async fn fetch_quota_with_cache(
                 quota_data.restriction_reason = restriction_reason.clone();
                 quota_data.validation_url = validation_url.clone();
 
-                // Apply saved raw JSON if restriction exists
-                if let Some(raw_json) = raw_quota_json {
-                    quota_data.forbidden_reason = Some(raw_json);
+                // [FIX] Create proper error JSON format when restriction exists
+                // This ensures validation_url can be extracted by frontend
+                if let Some(ref reason) = restriction_reason {
+                    let error_json = json!({
+                        "error": {
+                            "code": 403,
+                            "message": reason,
+                            "status": "FORBIDDEN",
+                            "details": [{
+                                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                                "reason": "ACCESS_BLOCKED",
+                                "metadata": {
+                                    "validation_url": validation_url.clone().unwrap_or_default()
+                                }
+                            }]
+                        }
+                    });
+                    quota_data.forbidden_reason = Some(error_json.to_string());
                 }
 
                 persist_project_id_for_account(account_id, project_id.as_deref())

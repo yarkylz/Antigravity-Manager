@@ -69,24 +69,8 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
     const enabledProxies = proxies.filter(p => p.enabled);
 
     const handleSelectProxy = (proxyId: string | null) => {
-        // Validate proxyId exists in enabledProxies before calling
-        const selectedProxy = proxyId ? enabledProxies.find(p => p.id === proxyId) : null;
-        if (proxyId && !selectedProxy) {
-            console.error('[AccountCard] ERROR: proxyId not found in enabledProxies!', { 
-                proxyId, 
-                enabledProxies: enabledProxies.map(p => p.id) 
-            });
-            alert(`ERROR: Proxy ${proxyId} not found in enabled proxies list!\nAvailable: ${enabledProxies.map(p => p.name || p.id).join(', ')}`);
-            return;
-        }
-        console.log('[AccountCard] handleSelectProxy:', { 
-            accountId: account.id, 
-            proxyId, 
-            selectedProxyName: selectedProxy?.name,
-            currentProxyId: account.proxy_id
-        });
         if (onBindProxy) {
-          onBindProxy(account.id, proxyId);
+            onBindProxy(account.id, proxyId);
         }
         setShowProxyDropdown(false);
     };
@@ -285,7 +269,6 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                                             type="button"
                                                             onClick={(e) => { 
                                                                 e.stopPropagation(); 
-                                                                alert(`Clicking proxy:\nname: ${p.name || 'none'}\nid: ${p.id}\naccount.id: ${account.id}`);
                                                                 handleSelectProxy(p.id); 
                                                             }}
                                                             className={cn(
@@ -323,7 +306,6 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                                         type="button"
                                                         onClick={(e) => { 
                                                             e.stopPropagation(); 
-                                                            alert(`Clicking proxy:\nname: ${p.name || 'none'}\nid: ${p.id}\naccount.id: ${account.id}`);
                                                             handleSelectProxy(p.id); 
                                                         }}
                                                         className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"

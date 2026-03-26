@@ -933,7 +933,7 @@ function AccountTable({
                                     onExport={() => onExport(account.id)}
                                     onDelete={() => onDelete(account.id)}
                                     onToggleProxy={() => onToggleProxy(account.id)}
-                                    onBindProxy={onBindProxy ? (proxyId: string | null) => onBindProxy(account.id, proxyId) : undefined}
+                                    onBindProxy={onBindProxy ? ((accountId: string) => (proxyId: string | null) => onBindProxy(accountId, proxyId))(account.id) : undefined}
                                     onWarmup={onWarmup ? () => onWarmup(account.id) : undefined}
                                     onUpdateLabel={onUpdateLabel ? (label: string) => onUpdateLabel(account.id, label) : undefined}
                                     onViewError={() => onViewError(account.id)}

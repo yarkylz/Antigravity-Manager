@@ -53,7 +53,7 @@ pub async fn unbind_account_proxy(
             instance
                 .axum_server
                 .proxy_pool_manager
-                .unbind_account_proxy(account_id)
+                .unbind_account_proxy(accountId)
                 .await;
             Ok(())
         } else {

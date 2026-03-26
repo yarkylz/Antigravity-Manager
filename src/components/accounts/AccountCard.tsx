@@ -21,7 +21,7 @@ interface AccountCardProps {
     onExport: () => void;
     onDelete: () => void;
     onToggleProxy: () => void;
-    onBindProxy?: (accountId: string, proxyId: string | null) => void; // New: bind/unbind proxy
+    onBindProxy?: (proxyId: string | null) => void; // Curried: parent already binds accountId
     onWarmup?: () => void;
     onUpdateLabel?: (label: string) => void;
     onViewError: () => void;
@@ -70,7 +70,7 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
 
     const handleSelectProxy = (proxyId: string | null) => {
         if (onBindProxy) {
-            onBindProxy(account.id, proxyId);
+            onBindProxy(proxyId);
         }
         setShowProxyDropdown(false);
     };

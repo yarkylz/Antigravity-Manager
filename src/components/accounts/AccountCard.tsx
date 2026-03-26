@@ -65,14 +65,23 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
     const [showProxyDropdown, setShowProxyDropdown] = useState(false);
 
     const handleSelectProxy = (proxyId: string | null) => {
+        // Validate proxyId exists in enabledProxies before calling
+        const selectedProxy = proxyId ? enabledProxies.find(p => p.id === proxyId) : null;
+        if (proxyId && !selectedProxy) {
+            console.error('[AccountCard] ERROR: proxyId not found in enabledProxies!', { 
+                proxyId, 
+                enabledProxies: enabledProxies.map(p => p.id) 
+            });
+            alert(`ERROR: Proxy ${proxyId} not found in enabled proxies list!\nAvailable: ${enabledProxies.map(p => p.name || p.id).join(', ')}`);
+            return;
+        }
         console.log('[AccountCard] handleSelectProxy:', { 
             accountId: account.id, 
             proxyId, 
-            currentProxyId: account.proxy_id,
-            allEnabledProxies: enabledProxies.map(p => ({ id: p.id, name: p.name }))
+            selectedProxyName: selectedProxy?.name,
+            currentProxyId: account.proxy_id
         });
         if (onBindProxy) {
-          console.log('[AccountCard] calling onBindProxy:', { passingAccountId: account.id, passingProxyId: proxyId });
           onBindProxy(account.id, proxyId);
         }
         setShowProxyDropdown(false);

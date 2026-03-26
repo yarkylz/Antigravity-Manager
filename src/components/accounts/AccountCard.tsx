@@ -63,6 +63,10 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
 
     // Proxy selector dropdown state
     const [showProxyDropdown, setShowProxyDropdown] = useState(false);
+    
+    // Get proxies from config - available throughout component
+    const proxies = config?.proxy?.proxy_pool?.proxies || [];
+    const enabledProxies = proxies.filter(p => p.enabled);
 
     const handleSelectProxy = (proxyId: string | null) => {
         // Validate proxyId exists in enabledProxies before calling
@@ -249,9 +253,8 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                             )}
                             {/* 绑定代理 - всегда показываем кнопку */}
                             {(() => {
-                                const proxies = config?.proxy?.proxy_pool?.proxies || [];
+                                // Use the component-level proxies and enabledProxies
                                 const proxy = proxies.find((p) => p.id === account.proxy_id);
-                                const enabledProxies = proxies.filter(p => p.enabled);
                                 
                                 // Если прокси привязан
                                 if (proxy) {

@@ -11,7 +11,7 @@ pub async fn bind_account_proxy(
     account_id: String,
     proxy_id: String,
 ) -> Result<(), String> {
-    tracing::info!("[Bind] bind_account_proxy called: {} -> {}", account_id, proxy_id);
+    tracing::info!("[Bind] bind_account_proxy called: account_id={}, proxy_id={}", account_id, proxy_id);
     
     // Use global proxy pool for consistency
     if let Some(pool) = proxy_pool::get_global_proxy_pool() {

@@ -470,6 +470,8 @@ function Accounts() {
 
   // Handle bind/unbind proxy from dropdown
   const handleBindProxy = async (accountId: string, proxyId: string | null) => {
+    // Debug: show values via alert since DevTools doesn't work
+    alert(`[Accounts] handleBindProxy called:\naccountId: ${accountId}\nproxyId: ${proxyId}`);
     console.log('[Accounts] handleBindProxy called:', { accountId, proxyId });
     try {
       if (proxyId) {

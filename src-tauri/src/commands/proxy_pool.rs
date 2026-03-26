@@ -8,15 +8,15 @@ use tauri::State;
 #[tauri::command]
 pub async fn bind_account_proxy(
     state: State<'_, ProxyServiceState>,
-    account_id: String,
-    proxy_id: String,
+    #[allow(non_snake_case)] accountId: String,
+    #[allow(non_snake_case)] proxyId: String,
 ) -> Result<(), String> {
-    tracing::info!("[Bind] bind_account_proxy called: account_id={}, proxy_id={}", account_id, proxy_id);
+    tracing::info!("[Bind] bind_account_proxy called: accountId={}, proxyId={}", accountId, proxyId);
     
     // Use global proxy pool for consistency
     if let Some(pool) = proxy_pool::get_global_proxy_pool() {
         tracing::info!("[Bind] Using global proxy pool");
-        pool.bind_account_to_proxy(account_id, proxy_id).await
+        pool.bind_account_to_proxy(accountId, proxyId).await
     } else {
         tracing::warn!("[Bind] Global proxy pool not initialized, checking instance...");
         // Fallback to instance pool if global not initialized
@@ -26,7 +26,7 @@ pub async fn bind_account_proxy(
             instance
                 .axum_server
                 .proxy_pool_manager
-                .bind_account_to_proxy(account_id, proxy_id)
+                .bind_account_to_proxy(accountId, proxyId)
                 .await
         } else {
             tracing::error!("[Bind] No proxy pool available!");
@@ -40,11 +40,11 @@ pub async fn bind_account_proxy(
 #[tauri::command]
 pub async fn unbind_account_proxy(
     state: State<'_, ProxyServiceState>,
-    account_id: String,
+    #[allow(non_snake_case)] accountId: String,
 ) -> Result<(), String> {
     // Use global proxy pool for consistency
     if let Some(pool) = proxy_pool::get_global_proxy_pool() {
-        pool.unbind_account_proxy(account_id).await;
+        pool.unbind_account_proxy(accountId).await;
         Ok(())
     } else {
         // Fallback to instance pool if global not initialized

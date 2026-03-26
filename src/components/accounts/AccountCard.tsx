@@ -283,7 +283,11 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                                         <button
                                                             key={p.id}
                                                             type="button"
-                                                            onClick={(e) => { e.stopPropagation(); handleSelectProxy(p.id); }}
+                                                            onClick={(e) => { 
+                                                                e.stopPropagation(); 
+                                                                alert(`Clicking proxy:\nname: ${p.name || 'none'}\nid: ${p.id}\naccount.id: ${account.id}`);
+                                                                handleSelectProxy(p.id); 
+                                                            }}
                                                             className={cn(
                                                                 "w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700",
                                                                 p.id === account.proxy_id ? "bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300" : "text-gray-700 dark:text-gray-300"
@@ -317,7 +321,11 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                                     <button
                                                         key={p.id}
                                                         type="button"
-                                                        onClick={(e) => { e.stopPropagation(); handleSelectProxy(p.id); }}
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            alert(`Clicking proxy:\nname: ${p.name || 'none'}\nid: ${p.id}\naccount.id: ${account.id}`);
+                                                            handleSelectProxy(p.id); 
+                                                        }}
                                                         className="w-full px-3 py-1.5 text-left text-xs hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
                                                     >
                                                         {p.name || p.id}

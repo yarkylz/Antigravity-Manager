@@ -110,6 +110,9 @@ pub async fn add_account(
         }
     }
 
+    // Auto-generate device fingerprint
+    auto_generate_device_fingerprint(&account);
+
     // 自动刷新配额
     let _ = internal_refresh_account_quota(&app, &mut account).await;
 
@@ -194,6 +197,23 @@ async fn apply_account_metadata(
     }
 
     Ok(())
+}
+
+/// Auto-generate and bind a device fingerprint for a newly created account (if none exists).
+/// Failure is non-fatal: the account is already created, so we just log the error.
+fn auto_generate_device_fingerprint(account: &Account) {
+    if account.device_profile.is_none() {
+        modules::logger::log_info(&format!(
+            "Auto-generating device fingerprint for new account: {}",
+            account.email
+        ));
+        if let Err(e) = modules::account::bind_device_profile(&account.id, "generate") {
+            modules::logger::log_info(&format!(
+                "Auto device fingerprint generation failed for {}: {}",
+                account.email, e
+            ));
+        }
+    }
 }
 
 /// 删除账号
@@ -588,6 +608,9 @@ pub async fn complete_oauth_login(
     // 应用 custom label 和 proxy binding
     apply_account_metadata(&app_handle, &mut account, custom_label, proxy_id).await?;
 
+    // Auto-generate device fingerprint
+    auto_generate_device_fingerprint(&account);
+
     // 自动触发刷新额度
     let _ = internal_refresh_account_quota(&app_handle, &mut account).await;
 
@@ -639,6 +662,11 @@ pub async fn import_v1_accounts(
         apply_account_metadata(&app, &mut account, custom_label, proxy_id).await?;
     }
 
+    // Auto-generate device fingerprint for all imported accounts
+    for account in &accounts {
+        auto_generate_device_fingerprint(account);
+    }
+
     // 对导入的账号尝试刷新一波
     for mut account in accounts.clone() {
         let _ = internal_refresh_account_quota(&app, &mut account).await;
@@ -662,6 +690,9 @@ pub async fn import_from_db(
 
     // 应用 custom label 和 proxy binding
     apply_account_metadata(&app, &mut account, custom_label, proxy_id).await?;
+
+    // Auto-generate device fingerprint
+    auto_generate_device_fingerprint(&account);
 
     // 既然是从数据库导入（即 IDE 当前账号），自动将其设为 Manager 的当前账号
     let account_id = account.id.clone();
@@ -692,6 +723,9 @@ pub async fn import_custom_db(
     // 自动设为当前账号
     let account_id = account.id.clone();
     modules::account::set_current_account_id(&account_id)?;
+
+    // Auto-generate device fingerprint
+    auto_generate_device_fingerprint(&account);
 
     // 自动触发刷新额度
     let _ = internal_refresh_account_quota(&app, &mut account).await;

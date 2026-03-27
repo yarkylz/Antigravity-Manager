@@ -20,7 +20,7 @@ interface AccountState {
     reorderAccounts: (accountIds: string[]) => Promise<void>;
 
     // 新增 actions
-    startOAuthLogin: () => Promise<void>;
+    startOAuthLogin: (customLabel?: string, proxyId?: string) => Promise<void>;
     completeOAuthLogin: (customLabel?: string, proxyId?: string) => Promise<void>;
     cancelOAuthLogin: () => Promise<void>;
     importV1Accounts: (customLabel?: string, proxyId?: string) => Promise<void>;

@@ -356,30 +356,20 @@ fn calculate_aspect_ratio_from_size(size: &str) -> &'static str {
 
 /// Inject current googleSearch tool and ensure no duplicate legacy search tools
 pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
-    let mut injected_with_functions = false;
-
     if let Some(obj) = body.as_object_mut() {
         let tools_entry = obj.entry("tools").or_insert_with(|| json!([]));
         if let Some(tools_arr) = tools_entry.as_array_mut() {
-            // [安全校验] Gemini v1internal 对混合工具有严格要求。
-            // Gemini 2.0+ 支持混合工具 (Function Calling + Google Search)。
-            // Gemini 3.1+ 也支持，但需要 includeServerSideToolInvocations 字段。
-            let mut supports_mixed_tools = false;
-            if let Some(model) = mapped_model {
-                let model_lower = model.to_lowercase();
-                supports_mixed_tools = model_lower.contains("gemini-2.0")
-                    || model_lower.contains("gemini-2.5")
-                    || model_lower.contains("gemini-3");
-            }
-
+            // [安全校验] v1internal 不支持 includeServerSideToolInvocations 字段，
+            // 而 Google API 要求该字段才能混合 Built-in tools (googleSearch) 与 Function Calling。
+            // 因此在 v1internal 上不能混合工具 — 当存在 functionDeclarations 时跳过 googleSearch 注入。
             let has_functions = tools_arr.iter().any(|t| {
                 t.as_object()
                     .map_or(false, |o| o.contains_key("functionDeclarations"))
             });
 
-            if has_functions && !supports_mixed_tools {
+            if has_functions {
                 tracing::debug!(
-                    "Skipping googleSearch injection due to existing functionDeclarations on older model"
+                    "Skipping googleSearch injection: v1internal does not support includeServerSideToolInvocations required for mixed tools"
                 );
                 return;
             }
@@ -397,19 +387,6 @@ pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
             tools_arr.push(json!({
                 "googleSearch": {}
             }));
-
-            injected_with_functions = has_functions;
-        }
-    }
-
-    // [FIX] When mixing Built-in tools (googleSearch) with Function Calling,
-    // Google API requires includeServerSideToolInvocations: true in toolConfig.
-    if injected_with_functions {
-        if let Some(obj) = body.as_object_mut() {
-            let tool_config = obj.entry("toolConfig").or_insert_with(|| json!({}));
-            if let Some(tc_obj) = tool_config.as_object_mut() {
-                tc_obj.insert("includeServerSideToolInvocations".to_string(), json!(true));
-            }
         }
     }
 }

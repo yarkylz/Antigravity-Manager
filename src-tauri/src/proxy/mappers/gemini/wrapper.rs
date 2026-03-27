@@ -1119,8 +1119,8 @@ mod tests {
 
         assert!(has_functions, "Should contain functionDeclarations");
         assert!(
-            has_google_search,
-            "Should contain googleSearch (Gemini 2.0+ supports mixed tools)"
+            !has_google_search,
+            "Should NOT contain googleSearch (v1internal does not support includeServerSideToolInvocations for mixed tools)"
         );
     }
 }

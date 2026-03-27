@@ -356,19 +356,20 @@ fn calculate_aspect_ratio_from_size(size: &str) -> &'static str {
 
 /// Inject current googleSearch tool and ensure no duplicate legacy search tools
 pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
+    let mut injected_with_functions = false;
+
     if let Some(obj) = body.as_object_mut() {
         let tools_entry = obj.entry("tools").or_insert_with(|| json!([]));
         if let Some(tools_arr) = tools_entry.as_array_mut() {
             // [安全校验] Gemini v1internal 对混合工具有严格要求。
-            // 只有 Gemini 2.0+ 及 3.0 系列模型确认支持混合工具 (Function Calling + Google Search)。
-            // Gemini 3.1+ 需要 includeServerSideToolInvocations 字段才能混合工具，
-            // 但 v1internal 不支持该字段，因此 3.1+ 排除在外。
+            // Gemini 2.0+ 支持混合工具 (Function Calling + Google Search)。
+            // Gemini 3.1+ 也支持，但需要 includeServerSideToolInvocations 字段。
             let mut supports_mixed_tools = false;
             if let Some(model) = mapped_model {
                 let model_lower = model.to_lowercase();
                 supports_mixed_tools = model_lower.contains("gemini-2.0")
                     || model_lower.contains("gemini-2.5")
-                    || (model_lower.contains("gemini-3") && !model_lower.contains("gemini-3.1"));
+                    || model_lower.contains("gemini-3");
             }
 
             let has_functions = tools_arr.iter().any(|t| {
@@ -396,6 +397,19 @@ pub fn inject_google_search_tool(body: &mut Value, mapped_model: Option<&str>) {
             tools_arr.push(json!({
                 "googleSearch": {}
             }));
+
+            injected_with_functions = has_functions;
+        }
+    }
+
+    // [FIX] When mixing Built-in tools (googleSearch) with Function Calling,
+    // Google API requires includeServerSideToolInvocations: true in toolConfig.
+    if injected_with_functions {
+        if let Some(obj) = body.as_object_mut() {
+            let tool_config = obj.entry("toolConfig").or_insert_with(|| json!({}));
+            if let Some(tc_obj) = tool_config.as_object_mut() {
+                tc_obj.insert("includeServerSideToolInvocations".to_string(), json!(true));
+            }
         }
     }
 }

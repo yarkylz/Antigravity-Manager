@@ -174,10 +174,10 @@ export const useAccountStore = create<AccountState>((set, get) => ({
         }
     },
 
-    startOAuthLogin: async () => {
+    startOAuthLogin: async (customLabel?: string, proxyId?: string) => {
         set({ loading: true, error: null });
         try {
-            await accountService.startOAuthLogin();
+            await accountService.startOAuthLogin(customLabel, proxyId);
             await get().fetchAccounts();
             set({ loading: false });
         } catch (error) {

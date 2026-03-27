@@ -101,10 +101,13 @@ impl Account {
     }
 
     pub fn update_quota(&mut self, mut quota: QuotaData) {
-        // Preserve existing validation_url when updating quota
-        if let Some(existing_url) = &self.validation_url {
-            if quota.validation_url.is_none() {
-                quota.validation_url = Some(existing_url.clone());
+        // Preserve existing validation_url only when new quota is also forbidden
+        // (don't carry over stale validation_url after successful verification)
+        if quota.is_forbidden {
+            if let Some(existing_url) = &self.validation_url {
+                if quota.validation_url.is_none() {
+                    quota.validation_url = Some(existing_url.clone());
+                }
             }
         }
         self.quota = Some(quota);

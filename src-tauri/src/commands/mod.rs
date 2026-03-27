@@ -1278,6 +1278,9 @@ pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Resul
                     details: Some(validation_url.map(|u| format!("The account has been denied access to the API. Verification URL: {}", u)).unwrap_or_else(|| "The account has been denied access to the API".to_string())),
                 })
             } else {
+                // Account is active — clear any previous forbidden/validation state
+                let _ = crate::modules::account::clear_account_forbidden(&account_id);
+
                 let model_count = quota_data.models.len();
                 let tier = quota_data
                     .subscription_tier
@@ -1411,6 +1414,9 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                         )),
                     })
                 } else {
+                    // Account is active — clear any previous forbidden/validation state
+                    let _ = crate::modules::account::clear_account_forbidden(&account_id);
+
                     modules::logger::log_info(&format!(
                         "Test request successful for {}: {} models, tier: {}",
                         account.email, model_count, tier

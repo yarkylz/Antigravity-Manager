@@ -124,6 +124,18 @@ function Accounts() {
       const result = await onboardAccount(accountId);
       if (result.success) {
         showToast(result.message || t('accounts.onboard_success'), 'success');
+        // Always follow up with a test request to verify final account status
+        try {
+          const testResult = await testAccountRequest(accountId);
+          if (testResult.success) {
+            showToast(`${t('accounts.test_request_result')}: ${testResult.status} - ${testResult.message}`, 'success');
+          } else {
+            const details = [testResult.status, testResult.message].filter(Boolean).join(' - ');
+            showToast(`${t('accounts.test_request_result')}: ${details}`, 'warning');
+          }
+        } catch (testError) {
+          showToast(`${t('accounts.test_request_result')}: ${testError}`, 'warning');
+        }
       } else {
         showToast(result.message || t('accounts.onboard_failed'), 'warning');
       }

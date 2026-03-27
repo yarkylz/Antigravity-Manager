@@ -40,13 +40,17 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
     const statusRef = useRef(status);
     const activeTabRef = useRef(activeTab);
     const isOpenRef = useRef(isOpen);
+    const customLabelRef = useRef(customLabel);
+    const selectedProxyIdRef = useRef(selectedProxyId);
 
     useEffect(() => {
         oauthUrlRef.current = oauthUrl;
         statusRef.current = status;
         activeTabRef.current = activeTab;
         isOpenRef.current = isOpen;
-    }, [oauthUrl, status, activeTab, isOpen]);
+        customLabelRef.current = customLabel;
+        selectedProxyIdRef.current = selectedProxyId;
+    }, [oauthUrl, status, activeTab, isOpen, customLabel, selectedProxyId]);
 
     // Reset state when dialog opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,7 +96,7 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                 setMessage(`${t('accounts.add.tabs.oauth')}...`);
 
                 try {
-                    await completeOAuthLogin(customLabel, selectedProxyId || undefined);
+                    await completeOAuthLogin(customLabelRef.current, selectedProxyIdRef.current || undefined);
                     setStatus('success');
                     setMessage(`${t('accounts.add.tabs.oauth')} ${t('common.success')}!`);
                     setTimeout(() => {
@@ -356,7 +360,8 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
         }
         // Default flow: opens the default browser and completes automatically.
         // (If user opened the URL manually, completion is also triggered by oauth-callback-received.)
-        handleAction(t('accounts.add.tabs.oauth'), startOAuthLogin, { clearOauthUrl: false });
+        const startWithMeta = () => startOAuthLogin(customLabel, selectedProxyId || undefined);
+        handleAction(t('accounts.add.tabs.oauth'), startWithMeta, { clearOauthUrl: false });
     };
 
     const handleCompleteOAuth = () => {

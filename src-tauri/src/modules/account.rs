@@ -1464,6 +1464,50 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Op
     Ok(())
 }
 
+/// Clear forbidden/validation state after successful verification or test request
+pub fn clear_account_forbidden(account_id: &str) -> Result<(), String> {
+    let _lock = ACCOUNT_INDEX_LOCK
+        .lock()
+        .map_err(|e| format!("failed_to_acquire_lock: {}", e))?;
+
+    let mut account = load_account(account_id)?;
+
+    // 1. Clear validation fields
+    account.validation_blocked = false;
+    account.validation_blocked_until = None;
+    account.validation_blocked_reason = None;
+    account.validation_url = None;
+    account.raw_error_response = None;
+
+    // 2. Re-enable proxy
+    account.proxy_disabled = false;
+    account.proxy_disabled_reason = None;
+    account.proxy_disabled_at = None;
+
+    // 3. Clear forbidden flag in quota
+    if let Some(ref mut q) = account.quota {
+        q.is_forbidden = false;
+        q.forbidden_reason = None;
+        q.validation_url = None;
+    }
+
+    save_account(&account)?;
+
+    // 4. Update index summary
+    let mut index = load_account_index()?;
+    if let Some(summary) = index.accounts.iter_mut().find(|a| a.id == account_id) {
+        summary.proxy_disabled = false;
+        summary.validation_url = None;
+        summary.raw_error_response = None;
+        save_account_index(&index)?;
+    }
+
+    // 5. Notify frontend
+    crate::modules::log_bridge::emit_accounts_refreshed();
+
+    Ok(())
+}
+
 /// Extract validation_url or appeal_url from error reason string
 fn extract_validation_url_from_reason(reason: &str) -> Option<String> {
     // Try JSON parsing first

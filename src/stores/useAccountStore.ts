@@ -20,8 +20,8 @@ interface AccountState {
     reorderAccounts: (accountIds: string[]) => Promise<void>;
 
     // 新增 actions
-    startOAuthLogin: (customLabel?: string, proxyId?: string) => Promise<void>;
-    completeOAuthLogin: (customLabel?: string, proxyId?: string) => Promise<void>;
+    startOAuthLogin: (customLabel?: string, proxyId?: string) => Promise<Account>;
+    completeOAuthLogin: (customLabel?: string, proxyId?: string) => Promise<Account>;
     cancelOAuthLogin: () => Promise<void>;
     importV1Accounts: (customLabel?: string, proxyId?: string) => Promise<void>;
     importFromDb: (customLabel?: string, proxyId?: string) => Promise<void>;
@@ -192,9 +192,26 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     startOAuthLogin: async (customLabel?: string, proxyId?: string) => {
         set({ loading: true, error: null });
         try {
-            await accountService.startOAuthLogin(customLabel, proxyId);
+            const newAccount = await accountService.startOAuthLogin(customLabel, proxyId);
             await get().fetchAccounts();
             set({ loading: false });
+
+            // Auto onboard + test request (non-fatal, same as addAccount)
+            if (newAccount?.id) {
+                try {
+                    await accountService.onboardAccount(newAccount.id);
+                } catch (e) {
+                    console.warn('[AccountStore] OAuth auto-onboard failed (non-fatal):', e);
+                }
+                try {
+                    await accountService.testAccountRequest(newAccount.id);
+                } catch (e) {
+                    console.warn('[AccountStore] OAuth auto-test failed (non-fatal):', e);
+                }
+                await get().fetchAccounts();
+            }
+
+            return newAccount;
         } catch (error) {
             set({ error: String(error), loading: false });
             throw error;
@@ -204,9 +221,26 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     completeOAuthLogin: async (customLabel?: string, proxyId?: string) => {
         set({ loading: true, error: null });
         try {
-            await accountService.completeOAuthLogin(customLabel, proxyId);
+            const newAccount = await accountService.completeOAuthLogin(customLabel, proxyId);
             await get().fetchAccounts();
             set({ loading: false });
+
+            // Auto onboard + test request (non-fatal, same as addAccount)
+            if (newAccount?.id) {
+                try {
+                    await accountService.onboardAccount(newAccount.id);
+                } catch (e) {
+                    console.warn('[AccountStore] OAuth auto-onboard failed (non-fatal):', e);
+                }
+                try {
+                    await accountService.testAccountRequest(newAccount.id);
+                } catch (e) {
+                    console.warn('[AccountStore] OAuth auto-test failed (non-fatal):', e);
+                }
+                await get().fetchAccounts();
+            }
+
+            return newAccount;
         } catch (error) {
             set({ error: String(error), loading: false });
             throw error;

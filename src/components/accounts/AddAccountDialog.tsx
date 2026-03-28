@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Database, Globe, FileClock, Loader2, CheckCircle2, XCircle, Copy, Check, Info, Link2, Tag, ChevronDown } from 'lucide-react';
+import { Plus, Database, Globe, FileClock, Loader2, CheckCircle2, XCircle, Copy, Check, Info, Link2, Tag, ChevronDown, ExternalLink } from 'lucide-react';
 import { useAccountStore } from '../../stores/useAccountStore';
 import { useConfigStore } from '../../stores/useConfigStore';
 import { useTranslation } from 'react-i18next';
@@ -29,12 +29,13 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
     const [oauthUrl, setOauthUrl] = useState('');
     const [oauthUrlCopied, setOauthUrlCopied] = useState(false);
     const [manualCode, setManualCode] = useState('');
+    const [verificationUrl, setVerificationUrl] = useState('');
 
     // UI State
     const [status, setStatus] = useState<Status>('idle');
     const [message, setMessage] = useState('');
 
-    const { startOAuthLogin, completeOAuthLogin, cancelOAuthLogin, importFromDb, importV1Accounts, importFromCustomDb } = useAccountStore();
+    const { startOAuthLogin, completeOAuthLogin, cancelOAuthLogin, importFromDb, importV1Accounts, importFromCustomDb, testAccountRequest } = useAccountStore();
 
     const oauthUrlRef = useRef(oauthUrl);
     const statusRef = useRef(status);
@@ -96,13 +97,9 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
                 setMessage(`${t('accounts.add.tabs.oauth')}...`);
 
                 try {
-                    await completeOAuthLogin(customLabelRef.current, selectedProxyIdRef.current || undefined);
-                    setStatus('success');
-                    setMessage(`${t('accounts.add.tabs.oauth')} ${t('common.success')}!`);
-                    setTimeout(() => {
-                        setIsOpen(false);
-                        resetState();
-                    }, 1500);
+                    const account = await completeOAuthLogin(customLabelRef.current, selectedProxyIdRef.current || undefined);
+                    setMessage(t('accounts.add.oauth.onboarding', 'Onboarding...'));
+                    await processNewAccount(account);
                 } catch (error) {
                     setStatus('error');
                     let errorMsg = String(error);
@@ -159,6 +156,72 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
         setSelectedProxyId('');
         setOauthUrl('');
         setOauthUrlCopied(false);
+        setVerificationUrl('');
+    };
+
+    /**
+     * Post-add flow: onboard → test → show verification/error/success.
+     * Non-fatal: account is already added, this just surfaces the test result.
+     */
+    const processNewAccount = async (account: { id: string }) => {
+        if (!account?.id) return;
+
+        // Onboard
+        setMessage(t('accounts.add.oauth.onboarding', 'Onboarding...'));
+        try {
+            await testAccountRequest(account.id); // onboard is already chained in store
+        } catch {
+            // onboard+test already ran in store (non-fatal), this is the UI-level test
+        }
+
+        // Fetch updated account data (store already did onboard+test, just need fresh state)
+        await fetchAccounts();
+
+        // Run a UI-level test to get the result for display
+        try {
+            const result = await testAccountRequest(account.id);
+
+            if (result.verification_url) {
+                setVerificationUrl(result.verification_url);
+                setStatus('success');
+                setMessage(t('accounts.add.oauth.needs_verification', 'Account added! Verification required.'));
+                // Don't auto-close — let user see/click the verification link
+                return;
+            }
+
+            if (result.is_banned || result.is_forbidden) {
+                setStatus('error');
+                setMessage(result.message || t('accounts.add.oauth.account_restricted', 'Account added but may be restricted.'));
+                return;
+            }
+
+            if (result.success) {
+                setStatus('success');
+                setMessage(t('accounts.add.oauth.full_success', 'Account added and verified!'));
+                setTimeout(() => {
+                    setIsOpen(false);
+                    resetState();
+                }, 1500);
+                return;
+            }
+
+            // Non-success but no specific flag
+            setStatus('success');
+            setMessage(result.message || `${t('accounts.add.tabs.oauth')} ${t('common.success')}!`);
+            setTimeout(() => {
+                setIsOpen(false);
+                resetState();
+            }, 1500);
+        } catch (testError) {
+            // Test failed but account was added — show success with warning
+            console.warn('[AddAccountDialog] Post-add test failed (non-fatal):', testError);
+            setStatus('success');
+            setMessage(`${t('accounts.add.tabs.oauth')} ${t('common.success')}!`);
+            setTimeout(() => {
+                setIsOpen(false);
+                resetState();
+            }, 1500);
+        }
     };
 
     const handleAction = async (
@@ -353,22 +416,50 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
         }
     };
 
-    const handleOAuth = () => {
+    const handleOAuth = async () => {
         if (!isTauri()) {
             handleOAuthWeb();
             return;
         }
         // Default flow: opens the default browser and completes automatically.
-        // (If user opened the URL manually, completion is also triggered by oauth-callback-received.)
-        const startWithMeta = () => startOAuthLogin(customLabel, selectedProxyId || undefined);
-        handleAction(t('accounts.add.tabs.oauth'), startWithMeta, { clearOauthUrl: false });
+        setStatus('loading');
+        setMessage(`${t('accounts.add.tabs.oauth')}...`);
+        try {
+            const account = await startOAuthLogin(customLabel, selectedProxyId || undefined);
+            setMessage(t('accounts.add.oauth.onboarding', 'Onboarding...'));
+            await processNewAccount(account);
+        } catch (error) {
+            setStatus('error');
+            let errorMsg = String(error);
+            if (errorMsg.includes('Refresh Token') || errorMsg.includes('refresh_token')) {
+                setMessage(errorMsg);
+            } else if (errorMsg.includes('Tauri') || errorMsg.toLowerCase().includes('environment') || errorMsg.includes('环境')) {
+                setMessage(t('common.environment_error', { error: errorMsg }));
+            } else {
+                setMessage(`${t('accounts.add.tabs.oauth')} ${t('common.error')}: ${errorMsg}`);
+            }
+        }
     };
 
-    const handleCompleteOAuth = () => {
+    const handleCompleteOAuth = async () => {
         // Manual flow: user already authorized in their preferred browser, just finish the flow.
-        // Pass current customLabel and proxyId
-        const completeWithMeta = () => completeOAuthLogin(customLabel, selectedProxyId || undefined);
-        handleAction(t('accounts.add.tabs.oauth'), completeWithMeta, { clearOauthUrl: false });
+        setStatus('loading');
+        setMessage(`${t('accounts.add.tabs.oauth')}...`);
+        try {
+            const account = await completeOAuthLogin(customLabel, selectedProxyId || undefined);
+            setMessage(t('accounts.add.oauth.onboarding', 'Onboarding...'));
+            await processNewAccount(account);
+        } catch (error) {
+            setStatus('error');
+            let errorMsg = String(error);
+            if (errorMsg.includes('Refresh Token') || errorMsg.includes('refresh_token')) {
+                setMessage(errorMsg);
+            } else if (errorMsg.includes('Tauri') || errorMsg.toLowerCase().includes('environment') || errorMsg.includes('环境')) {
+                setMessage(t('common.environment_error', { error: errorMsg }));
+            } else {
+                setMessage(`${t('accounts.add.tabs.oauth')} ${t('common.error')}: ${errorMsg}`);
+            }
+        }
     };
 
     const handleCopyUrl = async () => {
@@ -451,7 +542,7 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
         }
     };
 
-    // 状态提示组件
+    // 状態提示組件
     const StatusAlert = () => {
         if (status === 'idle' || !message) return null;
 
@@ -470,7 +561,20 @@ function AddAccountDialog({ onAdd, showText = true }: AddAccountDialogProps) {
         return (
             <div className={`alert ${styles[status]} mb-4 text-sm py-2 shadow-sm`}>
                 {icons[status]}
-                <span>{message}</span>
+                <div className="flex flex-col gap-1">
+                    <span>{message}</span>
+                    {verificationUrl && (
+                        <a
+                            href={verificationUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs font-medium underline underline-offset-2 hover:opacity-80 transition-opacity"
+                        >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            {t('accounts.add.oauth.open_verification', 'Open verification link')}
+                        </a>
+                    )}
+                </div>
             </div>
         );
     };

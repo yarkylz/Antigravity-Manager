@@ -1,4 +1,5 @@
 use crate::modules::oauth;
+use crate::modules;
 use std::sync::{Mutex, OnceLock};
 use tauri::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -22,17 +23,6 @@ fn get_oauth_flow_state() -> &'static Mutex<Option<OAuthFlowState>> {
     OAUTH_FLOW_STATE.get_or_init(|| Mutex::new(None))
 }
 
-fn oauth_success_html() -> &'static str {
-    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
-    <html>\
-    <body style='font-family: sans-serif; text-align: center; padding: 50px;'>\
-    <h1 style='color: green;'>✅ Authorization Successful!</h1>\
-    <p>You can close this window and return to the application.</p>\
-    <script>setTimeout(function() { window.close(); }, 2000);</script>\
-    </body>\
-    </html>"
-}
-
 fn oauth_fail_html() -> &'static str {
     "HTTP/1.1 400 Bad Request\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
     <html>\
@@ -41,6 +31,268 @@ fn oauth_fail_html() -> &'static str {
     <p>Failed to obtain Authorization Code. Please return to the app and try again.</p>\
     </body>\
     </html>"
+}
+
+/// Outcome of the full OAuth callback processing (exchange → save → onboard → test).
+enum CallbackOutcome {
+    /// Account active and working
+    Success { email: String, tier: String, model_count: usize },
+    /// Account requires verification (e.g. phone/identity)
+    Verification { email: String, verification_url: String, message: String },
+    /// Account is restricted/forbidden/banned but no verification URL
+    Restricted { email: String, message: String },
+    /// Something failed during processing
+    Error { message: String },
+}
+
+fn build_callback_html(outcome: &CallbackOutcome) -> String {
+    let body = match outcome {
+        CallbackOutcome::Success { email, tier, model_count } => {
+            format!(
+                "<h1 style='color: #22c55e;'>✅ Authorization Successful!</h1>\
+                 <p style='font-size: 1.1em;'>Account: <strong>{}</strong></p>\
+                 <p>Tier: <strong>{}</strong> · {} models available</p>\
+                 <p style='color: #888; margin-top: 24px;'>You can close this window and return to the application.</p>\
+                 <script>setTimeout(function() {{ window.close(); }}, 3000);</script>",
+                email, tier, model_count
+            )
+        }
+        CallbackOutcome::Verification { email, verification_url, message } => {
+            format!(
+                "<h1 style='color: #f59e0b;'>⚠️ Verification Required</h1>\
+                 <p style='font-size: 1.1em;'>Account: <strong>{}</strong></p>\
+                 <p>{}</p>\
+                 <a href='{}' target='_blank' rel='noopener' \
+                    style='display: inline-block; margin-top: 16px; padding: 12px 28px; \
+                           background: #3b82f6; color: white; text-decoration: none; \
+                           border-radius: 8px; font-size: 1.05em;'>\
+                    Complete Verification →\
+                 </a>\
+                 <p style='color: #888; margin-top: 24px;'>After verification, return to the app and test the account again.</p>",
+                email, message, verification_url
+            )
+        }
+        CallbackOutcome::Restricted { email, message } => {
+            format!(
+                "<h1 style='color: #ef4444;'>❌ Account Restricted</h1>\
+                 <p style='font-size: 1.1em;'>Account: <strong>{}</strong></p>\
+                 <p>{}</p>\
+                 <p style='color: #888; margin-top: 24px;'>Please return to the application for details.</p>",
+                email, message
+            )
+        }
+        CallbackOutcome::Error { message } => {
+            format!(
+                "<h1 style='color: #ef4444;'>❌ Authorization Error</h1>\
+                 <p>{}</p>\
+                 <p style='color: #888; margin-top: 24px;'>Please return to the app and try again.</p>",
+                message
+            )
+        }
+    };
+
+    format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n\
+         <html>\
+         <body style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; \
+                       text-align: center; padding: 50px; max-width: 600px; margin: 0 auto;'>\
+         {}\
+         </body>\
+         </html>",
+        body
+    )
+}
+
+/// Run the full post-callback flow: exchange code → save account → onboard → test.
+/// Returns dynamic HTML to display in the browser.
+async fn process_oauth_callback(
+    code: &str,
+    redirect_uri: &str,
+    _app_handle: Option<tauri::AppHandle>,
+) -> (CallbackOutcome, Result<String, String>) {
+    // Step 1: Exchange authorization code for tokens
+    let token_res = match oauth::exchange_code(code, redirect_uri).await {
+        Ok(t) => t,
+        Err(e) => {
+            return (
+                CallbackOutcome::Error { message: format!("Token exchange failed: {}", e) },
+                Err(e),
+            );
+        }
+    };
+
+    let refresh_token = match &token_res.refresh_token {
+        Some(rt) => rt.clone(),
+        None => {
+            return (
+                CallbackOutcome::Error {
+                    message: "No Refresh Token received. Please revoke access and try again.".to_string(),
+                },
+                Err("No refresh token".to_string()),
+            );
+        }
+    };
+
+    // Step 2: Get user info
+    let temp_account_id = uuid::Uuid::new_v4().to_string();
+    let user_info = match modules::oauth::get_user_info(&token_res.access_token, Some(&temp_account_id)).await {
+        Ok(info) => info,
+        Err(e) => {
+            return (
+                CallbackOutcome::Error { message: format!("Failed to get user info: {}", e) },
+                Err(e),
+            );
+        }
+    };
+
+    let email = user_info.email.clone();
+
+    // Step 3: Fetch project ID
+    let project_id = crate::proxy::project_resolver::fetch_project_id(&token_res.access_token)
+        .await
+        .ok();
+
+    // Step 4: Save account
+    let token_data = crate::models::TokenData::new(
+        token_res.access_token.clone(),
+        refresh_token,
+        token_res.expires_in,
+        Some(email.clone()),
+        project_id,
+        None,
+    );
+
+    let account = match modules::upsert_account(
+        email.clone(),
+        user_info.get_display_name(),
+        token_data,
+    ) {
+        Ok(a) => a,
+        Err(e) => {
+            return (
+                CallbackOutcome::Error { message: format!("Failed to save account: {}", e) },
+                Err(e),
+            );
+        }
+    };
+
+    let account_id = account.id.clone();
+
+    modules::logger::log_info(&format!(
+        "[OAuthCallback] Account saved: {}, starting onboard+test",
+        email
+    ));
+
+    // Step 5: Onboard — refresh token + resolve cloud project
+    let token = match modules::oauth::ensure_fresh_token(&account.token, Some(&account_id)).await {
+        Ok(new_token) => {
+            if new_token.access_token != account.token.access_token {
+                let mut updated = account.clone();
+                updated.token = new_token.clone();
+                let _ = modules::account::save_account(&updated);
+            }
+            new_token.access_token
+        }
+        Err(e) => {
+            return (
+                CallbackOutcome::Error { message: format!("Token refresh failed during onboarding: {}", e) },
+                Ok(code.to_string()),
+            );
+        }
+    };
+
+    // Step 6: Test — fetch quota to determine account status
+    match modules::quota::fetch_quota(&token, &email, Some(&account_id)).await {
+        Ok((quota_data, _)) => {
+            let _ = modules::update_account_quota(&account_id, quota_data.clone());
+
+            if quota_data.is_forbidden {
+                let validation_url = quota_data.validation_url.clone();
+                let raw_error = quota_data.forbidden_reason.clone();
+                let _ = modules::account::mark_account_forbidden(
+                    &account_id,
+                    "OAuth callback: 403 Forbidden",
+                    validation_url.as_deref(),
+                    raw_error.as_deref(),
+                );
+
+                if let Some(url) = validation_url {
+                    (
+                        CallbackOutcome::Verification {
+                            email,
+                            verification_url: url,
+                            message: "Account access denied (403 Forbidden). Verification required.".to_string(),
+                        },
+                        Ok(code.to_string()),
+                    )
+                } else {
+                    (
+                        CallbackOutcome::Restricted {
+                            email,
+                            message: "Account access denied (403 Forbidden).".to_string(),
+                        },
+                        Ok(code.to_string()),
+                    )
+                }
+            } else if let Some(ref reason) = quota_data.restriction_reason {
+                let validation_url = quota_data.validation_url.clone();
+                let raw_error = quota_data.forbidden_reason.clone();
+                let _ = modules::account::mark_account_forbidden(
+                    &account_id,
+                    &format!("Restricted: {}", reason),
+                    validation_url.as_deref(),
+                    raw_error.as_deref(),
+                );
+
+                if let Some(url) = validation_url {
+                    (
+                        CallbackOutcome::Verification {
+                            email,
+                            verification_url: url,
+                            message: format!("Account is restricted: {}", reason),
+                        },
+                        Ok(code.to_string()),
+                    )
+                } else {
+                    (
+                        CallbackOutcome::Restricted {
+                            email,
+                            message: format!("Account is restricted: {}", reason),
+                        },
+                        Ok(code.to_string()),
+                    )
+                }
+            } else {
+                let _ = modules::account::clear_account_forbidden(&account_id);
+                let model_count = quota_data.models.len();
+                let tier = quota_data
+                    .subscription_tier
+                    .clone()
+                    .unwrap_or_else(|| "Unknown".to_string());
+
+                (
+                    CallbackOutcome::Success { email, tier, model_count },
+                    Ok(code.to_string()),
+                )
+            }
+        }
+        Err(e) => {
+            // Quota fetch failed — account was saved, but we can't determine status.
+            // Still a partial success.
+            modules::logger::log_warn(&format!(
+                "[OAuthCallback] Quota fetch failed for {}: {}",
+                email, e
+            ));
+            (
+                CallbackOutcome::Success {
+                    email,
+                    tier: "Unknown".to_string(),
+                    model_count: 0,
+                },
+                Ok(code.to_string()),
+            )
+        }
+    }
 }
 
 async fn ensure_oauth_flow_prepared(
@@ -137,13 +389,12 @@ async fn ensure_oauth_flow_prepared(
         let tx = code_tx.clone();
         let mut rx = cancel_rx.clone();
         let app_handle = app_handle_for_tasks.clone();
+        let redir = redirect_uri.clone();
         tokio::spawn(async move {
             if let Ok((mut stream, _)) = tokio::select! {
                 res = l4.accept() => res.map_err(|e| format!("failed_to_accept_connection: {}", e)),
                 _ = rx.changed() => Err("OAuth cancelled".to_string()),
             } {
-                // Reuse the existing parsing/response code by constructing a temporary listener task
-                // that sends into the shared mpsc channel.
                 let mut buffer = [0u8; 4096];
                 let bytes_read = stream.read(&mut buffer).await.unwrap_or(0);
                 let request = String::from_utf8_lossy(&buffer[..bytes_read]);
@@ -161,7 +412,6 @@ async fn ensure_oauth_flow_prepared(
                         }
                     })
                     .and_then(|path| {
-                        // Use a dummy base for parsing; redirect_uri is already set to localhost
                         Url::parse(&format!("http://localhost{}", path)).ok()
                     })
                     .map(|url| {
@@ -205,19 +455,22 @@ async fn ensure_oauth_flow_prepared(
                 let (result, response_html) = match (code, state_valid) {
                     (Some(code), true) => {
                         crate::modules::logger::log_info(
-                            "Successfully captured OAuth code from IPv4 listener",
+                            "Successfully captured OAuth code from IPv4 listener, processing full flow...",
                         );
-                        (Ok(code), oauth_success_html())
+                        // Run the full flow (exchange → save → onboard → test) before responding
+                        let (outcome, code_result) =
+                            process_oauth_callback(&code, &redir, app_handle.clone()).await;
+                        (code_result, build_callback_html(&outcome))
                     }
                     (Some(_), false) => {
                         crate::modules::logger::log_error(
                             "OAuth callback state mismatch (CSRF protection)",
                         );
-                        (Err("OAuth state mismatch".to_string()), oauth_fail_html())
+                        (Err("OAuth state mismatch".to_string()), oauth_fail_html().to_string())
                     }
                     (None, _) => (
                         Err("Failed to get Authorization Code in callback".to_string()),
-                        oauth_fail_html(),
+                        oauth_fail_html().to_string(),
                     ),
                 };
 
@@ -237,6 +490,7 @@ async fn ensure_oauth_flow_prepared(
         let tx = code_tx.clone();
         let mut rx = cancel_rx;
         let app_handle = app_handle_for_tasks;
+        let redir = redirect_uri.clone();
         tokio::spawn(async move {
             if let Ok((mut stream, _)) = tokio::select! {
                 res = l6.accept() => res.map_err(|e| format!("failed_to_accept_connection: {}", e)),
@@ -299,19 +553,22 @@ async fn ensure_oauth_flow_prepared(
                 let (result, response_html) = match (code, state_valid) {
                     (Some(code), true) => {
                         crate::modules::logger::log_info(
-                            "Successfully captured OAuth code from IPv6 listener",
+                            "Successfully captured OAuth code from IPv6 listener, processing full flow...",
                         );
-                        (Ok(code), oauth_success_html())
+                        // Run the full flow (exchange → save → onboard → test) before responding
+                        let (outcome, code_result) =
+                            process_oauth_callback(&code, &redir, app_handle.clone()).await;
+                        (code_result, build_callback_html(&outcome))
                     }
                     (Some(_), false) => {
                         crate::modules::logger::log_error(
                             "OAuth callback state mismatch (IPv6 CSRF protection)",
                         );
-                        (Err("OAuth state mismatch".to_string()), oauth_fail_html())
+                        (Err("OAuth state mismatch".to_string()), oauth_fail_html().to_string())
                     }
                     (None, _) => (
                         Err("Failed to get Authorization Code in callback".to_string()),
-                        oauth_fail_html(),
+                        oauth_fail_html().to_string(),
                     ),
                 };
 

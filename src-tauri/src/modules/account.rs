@@ -1286,8 +1286,9 @@ pub fn update_account_quota(account_id: &str, quota: QuotaData) -> Result<(), St
 
                 for model_id in &config.quota_protection.monitored_models {
                     // Normalize config model ID to standard ID for lookup
-                    let std_id = crate::proxy::common::model_mapping::normalize_to_standard_id(model_id)
-                        .unwrap_or_else(|| model_id.clone());
+                    let std_id =
+                        crate::proxy::common::model_mapping::normalize_to_standard_id(model_id)
+                            .unwrap_or_else(|| model_id.clone());
                     let min_pct = group_min_percentage.get(&std_id).cloned().unwrap_or(100);
 
                     if min_pct <= threshold {
@@ -1398,7 +1399,12 @@ pub fn find_account_id_by_email(email: &str) -> Option<String> {
         .map(|a| a.id)
 }
 
-pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Option<&str>, raw_error_response: Option<&str>) -> Result<(), String> {
+pub fn mark_account_forbidden(
+    account_id: &str,
+    reason: &str,
+    validation_url: Option<&str>,
+    raw_error_response: Option<&str>,
+) -> Result<(), String> {
     let _lock = ACCOUNT_INDEX_LOCK
         .lock()
         .map_err(|e| format!("failed_to_acquire_lock: {}", e))?;
@@ -1412,7 +1418,10 @@ pub fn mark_account_forbidden(account_id: &str, reason: &str, validation_url: Op
 
     // Save raw error response for debugging
     if let Some(raw) = raw_error_response {
-        tracing::info!("[mark_account_forbidden] Saving raw_error_response: {}", raw);
+        tracing::info!(
+            "[mark_account_forbidden] Saving raw_error_response: {}",
+            raw
+        );
         account.raw_error_response = Some(raw.to_string());
     }
 

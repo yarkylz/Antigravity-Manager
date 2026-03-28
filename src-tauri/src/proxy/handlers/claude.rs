@@ -1187,28 +1187,29 @@ pub async fn handle_messages(
                                 .header(header::CONNECTION, "keep-alive")
                                 .header("X-Accel-Buffering", "no")
                                 .header("X-Account-Email", &email)
-                                 .header("X-Mapped-Model", &request_with_mapped.model)
-                                 .header(
-                                     "X-Context-Purified",
-                                     if is_purified { "true" } else { "false" },
-                                 )
-                                 .body(Body::from_stream(combined_stream))
-                                 .unwrap_or_else(|e| {
-                                     error!("Failed to build response body: {}", e);
-                                     Response::builder()
-                                         .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                         .header("Content-Type", "application/json")
-                                         .body(Body::from(
-                                             serde_json::to_string(&serde_json::json!({
-                                                 "error": {
-                                                     "message": "Internal server error",
-                                                     "type": "internal_error",
-                                                     "code": "internal_error"
-                                                 }
-                                             })).unwrap()
-                                         ))
-                                         .unwrap()
-                                 });
+                                .header("X-Mapped-Model", &request_with_mapped.model)
+                                .header(
+                                    "X-Context-Purified",
+                                    if is_purified { "true" } else { "false" },
+                                )
+                                .body(Body::from_stream(combined_stream))
+                                .unwrap_or_else(|e| {
+                                    error!("Failed to build response body: {}", e);
+                                    Response::builder()
+                                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                        .header("Content-Type", "application/json")
+                                        .body(Body::from(
+                                            serde_json::to_string(&serde_json::json!({
+                                                "error": {
+                                                    "message": "Internal server error",
+                                                    "type": "internal_error",
+                                                    "code": "internal_error"
+                                                }
+                                            }))
+                                            .unwrap(),
+                                        ))
+                                        .unwrap()
+                                });
                         } else {
                             // 客户端要非 Stream，需要收集完整响应并转换为 JSON
                             use crate::proxy::mappers::claude::collect_stream_to_json;
@@ -1228,35 +1229,38 @@ pub async fn handle_messages(
                                             "X-Context-Purified",
                                             if is_purified { "true" } else { "false" },
                                         )
-                                     .body(Body::from(
-                                         serde_json::to_string(&full_response)
-                                             .unwrap_or_else(|e| {
-                                                 error!("Failed to serialize response: {}", e);
-                                                 serde_json::to_string(&serde_json::json!({
-                                                     "error": {
-                                                         "message": "Internal server error",
-                                                         "type": "internal_error",
-                                                         "code": "internal_error"
-                                                     }
-                                                 })).unwrap()
-                                             }),
-                                     ))
-                                     .unwrap_or_else(|e| {
-                                         error!("Failed to build response body: {}", e);
-                                         Response::builder()
-                                             .status(StatusCode::INTERNAL_SERVER_ERROR)
-                                             .header("Content-Type", "application/json")
-                                             .body(Body::from(
-                                                 serde_json::to_string(&serde_json::json!({
-                                                     "error": {
-                                                         "message": "Internal server error",
-                                                         "type": "internal_error",
-                                                         "code": "internal_error"
-                                                     }
-                                                 })).unwrap()
-                                             ))
-                                             .unwrap()
-                                     });
+                                        .body(Body::from(
+                                            serde_json::to_string(&full_response).unwrap_or_else(
+                                                |e| {
+                                                    error!("Failed to serialize response: {}", e);
+                                                    serde_json::to_string(&serde_json::json!({
+                                                        "error": {
+                                                            "message": "Internal server error",
+                                                            "type": "internal_error",
+                                                            "code": "internal_error"
+                                                        }
+                                                    }))
+                                                    .unwrap()
+                                                },
+                                            ),
+                                        ))
+                                        .unwrap_or_else(|e| {
+                                            error!("Failed to build response body: {}", e);
+                                            Response::builder()
+                                                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                                                .header("Content-Type", "application/json")
+                                                .body(Body::from(
+                                                    serde_json::to_string(&serde_json::json!({
+                                                        "error": {
+                                                            "message": "Internal server error",
+                                                            "type": "internal_error",
+                                                            "code": "internal_error"
+                                                        }
+                                                    }))
+                                                    .unwrap(),
+                                                ))
+                                                .unwrap()
+                                        });
                                 }
                                 Err(e) => {
                                     return (
@@ -2094,8 +2098,7 @@ async fn call_gemini_sync(
 
     // Build proxy-aware client using upstream proxy config (from in-memory state)
     let client = {
-        let mut builder = reqwest::Client::builder()
-            .timeout(Duration::from_secs(120));
+        let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(120));
         let up = upstream_proxy.read().await;
         if up.enabled && !up.url.is_empty() {
             let url = crate::proxy::config::normalize_proxy_url(&up.url);

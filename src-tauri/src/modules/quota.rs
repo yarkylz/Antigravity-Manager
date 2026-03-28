@@ -129,7 +129,9 @@ impl ProjectResolutionOutcome {
     pub fn subscription_tier(&self) -> Option<String> {
         match self {
             Self::Resolved(project) => project.subscription_tier.clone(),
-            Self::InProgressExhausted { subscription_tier, .. }
+            Self::InProgressExhausted {
+                subscription_tier, ..
+            }
             | Self::TransportFailure {
                 subscription_tier, ..
             }
@@ -151,7 +153,9 @@ impl ProjectResolutionOutcome {
     pub fn restriction_reason(&self) -> Option<String> {
         match self {
             Self::Resolved(project) => project.restriction_reason.clone(),
-            Self::InProgressExhausted { restriction_reason, .. }
+            Self::InProgressExhausted {
+                restriction_reason, ..
+            }
             | Self::TransportFailure {
                 restriction_reason, ..
             }
@@ -174,21 +178,11 @@ impl ProjectResolutionOutcome {
         match self {
             Self::Resolved(project) => project.validation_url.clone(),
             Self::InProgressExhausted { validation_url, .. }
-            | Self::TransportFailure {
-                validation_url, ..
-            }
-            | Self::LoadHttpFailure {
-                validation_url, ..
-            }
-            | Self::OnboardHttpFailure {
-                validation_url, ..
-            }
-            | Self::TerminalMissingProject {
-                validation_url, ..
-            }
-            | Self::ParseFailure {
-                validation_url, ..
-            } => validation_url.clone(),
+            | Self::TransportFailure { validation_url, .. }
+            | Self::LoadHttpFailure { validation_url, .. }
+            | Self::OnboardHttpFailure { validation_url, .. }
+            | Self::TerminalMissingProject { validation_url, .. }
+            | Self::ParseFailure { validation_url, .. } => validation_url.clone(),
         }
     }
 }
@@ -333,7 +327,9 @@ fn response_preview(body: &str, max_len: usize) -> String {
     }
 }
 
-fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<String>, Option<String>, Option<String>) {
+fn extract_project_metadata(
+    data: &LoadProjectResponse,
+) -> (String, Option<String>, Option<String>, Option<String>) {
     let onboard_tier_id = data
         .allowed_tiers
         .as_ref()
@@ -358,7 +354,11 @@ fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<Strin
     let mut validation_url = None;
 
     if is_ineligible {
-        if let Some(first_tier) = data.ineligible_tiers.as_ref().and_then(|tiers| tiers.first()) {
+        if let Some(first_tier) = data
+            .ineligible_tiers
+            .as_ref()
+            .and_then(|tiers| tiers.first())
+        {
             // Prefer reasonMessage, fall back to reasonCode
             restriction_reason = first_tier
                 .reason_message
@@ -374,7 +374,9 @@ fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<Strin
                 .or_else(|| first_tier.action_url.clone())
                 .or_else(|| {
                     // Try to extract URL from validationErrorMessage if present
-                    first_tier.validation_error_message.as_ref()
+                    first_tier
+                        .validation_error_message
+                        .as_ref()
                         .and_then(|msg| {
                             // Try to find a URL in the message
                             let url_regex = regex::Regex::new(r#"https://[^\s]+"#).ok();
@@ -405,7 +407,12 @@ fn extract_project_metadata(data: &LoadProjectResponse) -> (String, Option<Strin
         }
     }
 
-    (onboard_tier_id, subscription_tier, restriction_reason, validation_url)
+    (
+        onboard_tier_id,
+        subscription_tier,
+        restriction_reason,
+        validation_url,
+    )
 }
 
 async fn call_onboard_user(
@@ -544,7 +551,11 @@ async fn call_onboard_user(
         "⚠️ [{}] onboardUser: max polling attempts reached without done=true",
         email
     ));
-    ProjectResolutionOutcome::InProgressExhausted { subscription_tier, restriction_reason, validation_url }
+    ProjectResolutionOutcome::InProgressExhausted {
+        subscription_tier,
+        restriction_reason,
+        validation_url,
+    }
 }
 
 pub async fn resolve_project_with_contract(
@@ -610,7 +621,13 @@ pub async fn resolve_project_with_contract(
                     ));
 
                     // Log tier-related fields specifically
-                    for field in &["currentTier", "paidTier", "allowedTiers", "ineligibleTiers", "subscriptionType"] {
+                    for field in &[
+                        "currentTier",
+                        "paidTier",
+                        "allowedTiers",
+                        "ineligibleTiers",
+                        "subscriptionType",
+                    ] {
                         if let Some(val) = raw_data.get(field) {
                             crate::modules::logger::log_info(&format!(
                                 "📊 [{}] loadCodeAssist {}: {}",
@@ -638,7 +655,8 @@ pub async fn resolve_project_with_contract(
                         }
                     };
 
-                    let (onboard_tier_id, subscription_tier, restriction_reason, validation_url) = extract_project_metadata(&data);
+                    let (onboard_tier_id, subscription_tier, restriction_reason, validation_url) =
+                        extract_project_metadata(&data);
 
                     if let Some(ref tier) = subscription_tier {
                         crate::modules::logger::log_info(&format!(
@@ -731,12 +749,25 @@ async fn fetch_project_id(
     access_token: &str,
     email: &str,
     account_id: Option<&str>,
-) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
+) -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+) {
     match resolve_project_with_contract(access_token, Some(email), account_id).await {
-        ProjectResolutionOutcome::Resolved(project) => {
-            (Some(project.project_id), project.subscription_tier, project.restriction_reason, project.validation_url)
-        }
-        outcome => (None, outcome.subscription_tier(), outcome.restriction_reason(), outcome.validation_url()),
+        ProjectResolutionOutcome::Resolved(project) => (
+            Some(project.project_id),
+            project.subscription_tier,
+            project.restriction_reason,
+            project.validation_url,
+        ),
+        outcome => (
+            None,
+            outcome.subscription_tier(),
+            outcome.restriction_reason(),
+            outcome.validation_url(),
+        ),
     }
 }
 
@@ -772,23 +803,24 @@ pub async fn fetch_quota_with_cache(
 
     // Optimization: Skip loadCodeAssist call if project_id is cached to save API quota
     let cached_project_id = normalize_real_project_id(cached_project_id);
-        let (project_id, subscription_tier, restriction_reason, validation_url) = if let Some(pid) = cached_project_id {
-        // Also pull cached subscription_tier and restriction_reason so they don't become None/Unknown
-        let (cached_tier, cached_reason, cached_validation_url) = account_id
-            .and_then(|id| {
-                crate::modules::account::load_account(id)
-                    .ok()
-                    .and_then(|acc| acc.quota)
-            })
-            .map(|q| (q.subscription_tier, q.restriction_reason, q.validation_url))
-            .unwrap_or((None, None, None));
-        
-        // [FIX] Always do a fresh resolution to get the current subscription tier and restriction status
-        // This ensures we detect if the account now requires verification (even if it was fine before)
-        fetch_project_id(access_token, email, account_id).await
-    } else {
-        fetch_project_id(access_token, email, account_id).await
-    };
+    let (project_id, subscription_tier, restriction_reason, validation_url) =
+        if let Some(pid) = cached_project_id {
+            // Also pull cached subscription_tier and restriction_reason so they don't become None/Unknown
+            let (cached_tier, cached_reason, cached_validation_url) = account_id
+                .and_then(|id| {
+                    crate::modules::account::load_account(id)
+                        .ok()
+                        .and_then(|acc| acc.quota)
+                })
+                .map(|q| (q.subscription_tier, q.restriction_reason, q.validation_url))
+                .unwrap_or((None, None, None));
+
+            // [FIX] Always do a fresh resolution to get the current subscription tier and restriction status
+            // This ensures we detect if the account now requires verification (even if it was fine before)
+            fetch_project_id(access_token, email, account_id).await
+        } else {
+            fetch_project_id(access_token, email, account_id).await
+        };
 
     let project_id = normalize_real_project_id(project_id.as_deref());
 
@@ -797,7 +829,8 @@ pub async fn fetch_quota_with_cache(
     if project_id.is_none() && subscription_tier.is_some() {
         crate::modules::logger::log_warn(&format!(
             "⚠️ [{}] No project_id found for restricted account with tier '{}'",
-            email, subscription_tier.as_ref().unwrap()
+            email,
+            subscription_tier.as_ref().unwrap()
         ));
         let mut q = QuotaData::new();
         q.subscription_tier = subscription_tier.clone();
@@ -1393,7 +1426,12 @@ pub async fn warm_up_account(account_id: &str) -> Result<String, String> {
             email
         ));
         let reason = "Warmup: 403 Forbidden - quota fetch denied";
-        let _ = crate::modules::account::mark_account_forbidden(account_id, reason, None, fresh_quota.forbidden_reason.as_deref());
+        let _ = crate::modules::account::mark_account_forbidden(
+            account_id,
+            reason,
+            None,
+            fresh_quota.forbidden_reason.as_deref(),
+        );
         return Err("Account is forbidden (403)".to_string());
     }
 

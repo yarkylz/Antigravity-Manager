@@ -1108,7 +1108,9 @@ impl TokenManager {
         let c2 = available[pick2];
 
         // 选择目标模型配额更高的
-        let selected = if c1.model_quotas.get(normalized_target).copied().unwrap_or(0) >= c2.model_quotas.get(normalized_target).copied().unwrap_or(0) {
+        let selected = if c1.model_quotas.get(normalized_target).copied().unwrap_or(0)
+            >= c2.model_quotas.get(normalized_target).copied().unwrap_or(0)
+        {
             c1
         } else {
             c2
@@ -1117,7 +1119,11 @@ impl TokenManager {
         tracing::debug!(
             "🎲 [P2C] Selected {} ({}%) from [{}({}%), {}({}%)] for model {}",
             selected.email,
-            selected.model_quotas.get(normalized_target).copied().unwrap_or(0),
+            selected
+                .model_quotas
+                .get(normalized_target)
+                .copied()
+                .unwrap_or(0),
             c1.email,
             c1.model_quotas.get(normalized_target).copied().unwrap_or(0),
             c2.email,

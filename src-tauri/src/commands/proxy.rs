@@ -771,7 +771,11 @@ pub async fn check_proxy_health(
         // Fallback to old behavior
         let instance_lock = state.instance.read().await;
         if let Some(instance) = instance_lock.as_ref() {
-            instance.axum_server.proxy_pool_manager.health_check().await?;
+            instance
+                .axum_server
+                .proxy_pool_manager
+                .health_check()
+                .await?;
             let config = instance.axum_server.proxy_pool_state.read().await;
             Ok(config.clone())
         } else {

@@ -1108,7 +1108,10 @@ pub struct TestRequestResult {
 
 /// Onboard account: initialize cloud code project, refresh token, verify access
 #[tauri::command]
-pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Result<OnboardingResult, String> {
+pub async fn onboard_account(
+    app: tauri::AppHandle,
+    account_id: String,
+) -> Result<OnboardingResult, String> {
     modules::logger::log_info(&format!("Starting onboarding for account: {}", account_id));
 
     let mut account = modules::load_account(&account_id)?;
@@ -1161,7 +1164,9 @@ pub async fn onboard_account(app: tauri::AppHandle, account_id: String) -> Resul
     .await
     {
         modules::quota::ProjectResolutionOutcome::Resolved(project) => project,
-        modules::quota::ProjectResolutionOutcome::InProgressExhausted { subscription_tier, .. } => {
+        modules::quota::ProjectResolutionOutcome::InProgressExhausted {
+            subscription_tier, ..
+        } => {
             return Ok(OnboardingResult {
                 success: false,
                 message: "Project acquisition did not finish before polling timed out".to_string(),
@@ -1421,7 +1426,7 @@ pub async fn test_account_request(account_id: String) -> Result<TestRequestResul
                     .subscription_tier
                     .clone()
                     .unwrap_or_else(|| "Unknown".to_string());
-                
+
                 // Check if account is restricted (has restriction_reason)
                 if let Some(ref reason) = quota_data.restriction_reason {
                     // Extract validation URL from quota_data if available

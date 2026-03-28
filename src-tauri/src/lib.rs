@@ -369,17 +369,18 @@ pub fn run() {
                     // 使用原始配置，不克隆，让AxumServer也使用同一个配置
                     let proxy_pool_config = config.proxy.proxy_pool.clone();
                     let upstream_proxy_config = config.proxy.upstream_proxy.clone();
-                    
+
                     let proxy_pool_arc = Arc::new(tokio::sync::RwLock::new(proxy_pool_config));
-                    let upstream_proxy_arc = Arc::new(tokio::sync::RwLock::new(upstream_proxy_config));
-                    
+                    let upstream_proxy_arc =
+                        Arc::new(tokio::sync::RwLock::new(upstream_proxy_config));
+
                     // Initialize global proxy pool - this is what OAuth and other modules use
                     // AxumServer will use the same config (via OnceLock)
                     let proxy_pool_manager = crate::proxy::proxy_pool::init_global_proxy_pool(
                         proxy_pool_arc.clone(),
                         upstream_proxy_arc.clone(),
                     );
-                    
+
                     // [FIX] Run health check SYNCHRONOUSLY before any account operations
                     // This ensures all proxies are checked before work starts
                     info!("Running initial proxy health check...");
@@ -388,7 +389,7 @@ pub fn run() {
                     } else {
                         info!("Initial proxy health check completed");
                     }
-                    
+
                     // Start background health check loop for periodic checks
                     proxy_pool_manager.clone().start_health_check_loop();
                     info!("Proxy pool initialized, background health check started");
@@ -397,7 +398,7 @@ pub fn run() {
                     let mut modified_config = config.proxy.clone();
                     // 将已初始化的配置包装后传入（通过clone，AxumServer会重新包装，但数据相同）
                     // 实际上AxumServer会重新创建manager，我们只需要确保global先设置好
-                    
+
                     let state = handle.state::<commands::proxy::ProxyServiceState>();
                     let cf_state = handle.state::<commands::cloudflared::CloudflaredState>();
                     let integration =

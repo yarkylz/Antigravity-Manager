@@ -315,19 +315,22 @@ impl AxumServer {
     ) -> Result<(Self, tokio::task::JoinHandle<()>), String> {
         let custom_mapping_state = Arc::new(tokio::sync::RwLock::new(custom_mapping));
         let proxy_state = Arc::new(tokio::sync::RwLock::new(upstream_proxy.clone()));
-        
+
         // [FIX] Use global proxy pool's config instead of creating a new one
         // This ensures health check updates the same config that frontend reads from
         let proxy_pool_state: Arc<tokio::sync::RwLock<crate::proxy::config::ProxyPoolConfig>>;
         let proxy_pool_manager: Arc<crate::proxy::proxy_pool::ProxyPoolManager>;
-        
+
         if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
             proxy_pool_state = manager.config();
             proxy_pool_manager = manager;
         } else {
             // Fallback: create new if global not initialized (shouldn't happen)
             let state = Arc::new(tokio::sync::RwLock::new(proxy_pool_config));
-            let manager = crate::proxy::proxy_pool::init_global_proxy_pool(state.clone(), proxy_state.clone());
+            let manager = crate::proxy::proxy_pool::init_global_proxy_pool(
+                state.clone(),
+                proxy_state.clone(),
+            );
             proxy_pool_state = state;
             proxy_pool_manager = manager;
         };
@@ -1048,8 +1051,7 @@ async fn admin_add_account(
                     if let Ok(mut account_json) =
                         serde_json::from_str::<serde_json::Value>(&content)
                     {
-                        account_json["custom_label"] =
-                            serde_json::Value::String(truncated);
+                        account_json["custom_label"] = serde_json::Value::String(truncated);
                         if let Ok(json_str) = serde_json::to_string_pretty(&account_json) {
                             let _ = std::fs::write(&account_path, json_str);
                         }
@@ -1072,13 +1074,12 @@ async fn admin_add_account(
                     account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
 
                     // Persist proxy_id and proxy_bound_at to account JSON file
-                    let data_dir =
-                        crate::modules::account::get_data_dir().map_err(|e| {
-                            (
-                                StatusCode::INTERNAL_SERVER_ERROR,
-                                Json(ErrorResponse { error: e }),
-                            )
-                        })?;
+                    let data_dir = crate::modules::account::get_data_dir().map_err(|e| {
+                        (
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            Json(ErrorResponse { error: e }),
+                        )
+                    })?;
                     let account_path = data_dir
                         .join("accounts")
                         .join(format!("{}.json", account.id));
@@ -1087,13 +1088,10 @@ async fn admin_add_account(
                             if let Ok(mut account_json) =
                                 serde_json::from_str::<serde_json::Value>(&content)
                             {
-                                account_json["proxy_id"] =
-                                    serde_json::Value::String(pid.clone());
+                                account_json["proxy_id"] = serde_json::Value::String(pid.clone());
                                 account_json["proxy_bound_at"] =
                                     serde_json::json!(account.proxy_bound_at);
-                                if let Ok(json_str) =
-                                    serde_json::to_string_pretty(&account_json)
-                                {
+                                if let Ok(json_str) = serde_json::to_string_pretty(&account_json) {
                                     let _ = std::fs::write(&account_path, json_str);
                                 }
                             }
@@ -1125,7 +1123,9 @@ async fn admin_add_account(
             &account.email,
             None,
             Some(&account.id),
-        ).await {
+        )
+        .await
+        {
             Ok((quota, _project_id)) => {
                 account.quota = Some(quota);
                 // Persist updated quota to account JSON
@@ -1620,7 +1620,7 @@ async fn admin_trigger_proxy_health_check(
                 Json(ErrorResponse { error: e }),
             )
         })?;
-        
+
         let config = manager.config();
         let pool_config = config.read().await;
         return Ok(Json(serde_json::json!({
@@ -1629,7 +1629,7 @@ async fn admin_trigger_proxy_health_check(
             "proxies": pool_config.proxies,
         })));
     }
-    
+
     // Fallback to old behavior
     state.proxy_pool_manager.health_check().await.map_err(|e| {
         (
@@ -1812,8 +1812,7 @@ async fn admin_fetch_zai_models(
 
     // Build proxy-aware client using upstream proxy config (fixes proxy bypass bug)
     let client = {
-        let mut builder = reqwest::Client::builder()
-            .timeout(tokio::time::Duration::from_secs(30));
+        let mut builder = reqwest::Client::builder().timeout(tokio::time::Duration::from_secs(30));
         let upstream = state.upstream_proxy.read().await;
         if upstream.enabled && !upstream.url.is_empty() {
             let url = crate::proxy::config::normalize_proxy_url(&upstream.url);

@@ -1,5 +1,5 @@
-use crate::modules::oauth;
 use crate::modules;
+use crate::modules::oauth;
 use std::sync::{Mutex, OnceLock};
 use tauri::Url;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -36,9 +36,17 @@ fn oauth_fail_html() -> &'static str {
 /// Outcome of the full OAuth callback processing (exchange → save → onboard → test).
 enum CallbackOutcome {
     /// Account active and working
-    Success { email: String, tier: String, model_count: usize },
+    Success {
+        email: String,
+        tier: String,
+        model_count: usize,
+    },
     /// Account requires verification (e.g. phone/identity)
-    Verification { email: String, verification_url: String, message: String },
+    Verification {
+        email: String,
+        verification_url: String,
+        message: String,
+    },
     /// Account is restricted/forbidden/banned but no verification URL
     Restricted { email: String, message: String },
     /// Something failed during processing
@@ -47,7 +55,11 @@ enum CallbackOutcome {
 
 fn build_callback_html(outcome: &CallbackOutcome) -> String {
     let body = match outcome {
-        CallbackOutcome::Success { email, tier, model_count } => {
+        CallbackOutcome::Success {
+            email,
+            tier,
+            model_count,
+        } => {
             format!(
                 "<h1 style='color: #22c55e;'>✅ Authorization Successful!</h1>\
                  <p style='font-size: 1.1em;'>Account: <strong>{}</strong></p>\
@@ -57,7 +69,11 @@ fn build_callback_html(outcome: &CallbackOutcome) -> String {
                 email, tier, model_count
             )
         }
-        CallbackOutcome::Verification { email, verification_url, message } => {
+        CallbackOutcome::Verification {
+            email,
+            verification_url,
+            message,
+        } => {
             format!(
                 "<h1 style='color: #f59e0b;'>⚠️ Verification Required</h1>\
                  <p style='font-size: 1.1em;'>Account: <strong>{}</strong></p>\
@@ -115,7 +131,9 @@ async fn process_oauth_callback(
         Ok(t) => t,
         Err(e) => {
             return (
-                CallbackOutcome::Error { message: format!("Token exchange failed: {}", e) },
+                CallbackOutcome::Error {
+                    message: format!("Token exchange failed: {}", e),
+                },
                 Err(e),
             );
         }
@@ -126,7 +144,8 @@ async fn process_oauth_callback(
         None => {
             return (
                 CallbackOutcome::Error {
-                    message: "No Refresh Token received. Please revoke access and try again.".to_string(),
+                    message: "No Refresh Token received. Please revoke access and try again."
+                        .to_string(),
                 },
                 Err("No refresh token".to_string()),
             );
@@ -135,11 +154,18 @@ async fn process_oauth_callback(
 
     // Step 2: Get user info
     let temp_account_id = uuid::Uuid::new_v4().to_string();
-    let user_info = match modules::oauth::get_user_info(&token_res.access_token, Some(&temp_account_id)).await {
+    let user_info = match modules::oauth::get_user_info(
+        &token_res.access_token,
+        Some(&temp_account_id),
+    )
+    .await
+    {
         Ok(info) => info,
         Err(e) => {
             return (
-                CallbackOutcome::Error { message: format!("Failed to get user info: {}", e) },
+                CallbackOutcome::Error {
+                    message: format!("Failed to get user info: {}", e),
+                },
                 Err(e),
             );
         }
@@ -162,19 +188,18 @@ async fn process_oauth_callback(
         None,
     );
 
-    let account = match modules::upsert_account(
-        email.clone(),
-        user_info.get_display_name(),
-        token_data,
-    ) {
-        Ok(a) => a,
-        Err(e) => {
-            return (
-                CallbackOutcome::Error { message: format!("Failed to save account: {}", e) },
-                Err(e),
-            );
-        }
-    };
+    let account =
+        match modules::upsert_account(email.clone(), user_info.get_display_name(), token_data) {
+            Ok(a) => a,
+            Err(e) => {
+                return (
+                    CallbackOutcome::Error {
+                        message: format!("Failed to save account: {}", e),
+                    },
+                    Err(e),
+                );
+            }
+        };
 
     let account_id = account.id.clone();
 
@@ -195,7 +220,9 @@ async fn process_oauth_callback(
         }
         Err(e) => {
             return (
-                CallbackOutcome::Error { message: format!("Token refresh failed during onboarding: {}", e) },
+                CallbackOutcome::Error {
+                    message: format!("Token refresh failed during onboarding: {}", e),
+                },
                 Ok(code.to_string()),
             );
         }
@@ -221,7 +248,9 @@ async fn process_oauth_callback(
                         CallbackOutcome::Verification {
                             email,
                             verification_url: url,
-                            message: "Account access denied (403 Forbidden). Verification required.".to_string(),
+                            message:
+                                "Account access denied (403 Forbidden). Verification required."
+                                    .to_string(),
                         },
                         Ok(code.to_string()),
                     )
@@ -271,7 +300,11 @@ async fn process_oauth_callback(
                     .unwrap_or_else(|| "Unknown".to_string());
 
                 (
-                    CallbackOutcome::Success { email, tier, model_count },
+                    CallbackOutcome::Success {
+                        email,
+                        tier,
+                        model_count,
+                    },
                     Ok(code.to_string()),
                 )
             }
@@ -411,9 +444,7 @@ async fn ensure_oauth_flow_prepared(
                             None
                         }
                     })
-                    .and_then(|path| {
-                        Url::parse(&format!("http://localhost{}", path)).ok()
-                    })
+                    .and_then(|path| Url::parse(&format!("http://localhost{}", path)).ok())
                     .map(|url| {
                         let mut code = None;
                         let mut state = None;
@@ -466,7 +497,10 @@ async fn ensure_oauth_flow_prepared(
                         crate::modules::logger::log_error(
                             "OAuth callback state mismatch (CSRF protection)",
                         );
-                        (Err("OAuth state mismatch".to_string()), oauth_fail_html().to_string())
+                        (
+                            Err("OAuth state mismatch".to_string()),
+                            oauth_fail_html().to_string(),
+                        )
                     }
                     (None, _) => (
                         Err("Failed to get Authorization Code in callback".to_string()),
@@ -564,7 +598,10 @@ async fn ensure_oauth_flow_prepared(
                         crate::modules::logger::log_error(
                             "OAuth callback state mismatch (IPv6 CSRF protection)",
                         );
-                        (Err("OAuth state mismatch".to_string()), oauth_fail_html().to_string())
+                        (
+                            Err("OAuth state mismatch".to_string()),
+                            oauth_fail_html().to_string(),
+                        )
                     }
                     (None, _) => (
                         Err("Failed to get Authorization Code in callback".to_string()),

@@ -1,4 +1,6 @@
-use crate::proxy::config::{ProxyEntry, ProxyPoolConfig, ProxySelectionStrategy, UpstreamProxyConfig};
+use crate::proxy::config::{
+    ProxyEntry, ProxyPoolConfig, ProxySelectionStrategy, UpstreamProxyConfig,
+};
 use dashmap::DashMap;
 use futures::{stream, StreamExt};
 use rquest::Client;
@@ -19,7 +21,10 @@ pub fn get_global_proxy_pool() -> Option<Arc<ProxyPoolManager>> {
 }
 
 /// 初始化全局代理池管理器
-pub fn init_global_proxy_pool(config: Arc<RwLock<ProxyPoolConfig>>, upstream_proxy: Arc<RwLock<UpstreamProxyConfig>>) -> Arc<ProxyPoolManager> {
+pub fn init_global_proxy_pool(
+    config: Arc<RwLock<ProxyPoolConfig>>,
+    upstream_proxy: Arc<RwLock<UpstreamProxyConfig>>,
+) -> Arc<ProxyPoolManager> {
     let manager = Arc::new(ProxyPoolManager::new(config, Some(upstream_proxy)));
     let _ = GLOBAL_PROXY_POOL.set(manager.clone());
     manager
@@ -56,7 +61,10 @@ impl ProxyPoolManager {
         self.config.clone()
     }
 
-    pub fn new(config: Arc<RwLock<ProxyPoolConfig>>, upstream_proxy: Option<Arc<RwLock<UpstreamProxyConfig>>>) -> Self {
+    pub fn new(
+        config: Arc<RwLock<ProxyPoolConfig>>,
+        upstream_proxy: Option<Arc<RwLock<UpstreamProxyConfig>>>,
+    ) -> Self {
         // 从配置中加载已保存的绑定关系
         let account_bindings = Arc::new(DashMap::new());
 
@@ -69,18 +77,18 @@ impl ProxyPoolManager {
                 cfg.proxies.len(),
                 cfg.account_bindings.len()
             );
-            
+
             // [DEBUG] Log proxy URLs being loaded
             for proxy in &cfg.proxies {
-                tracing::info!(
-                    "[ProxyPool] Loaded proxy: {} -> {}",
-                    proxy.name,
-                    proxy.url
-                );
+                tracing::info!("[ProxyPool] Loaded proxy: {} -> {}", proxy.name, proxy.url);
             }
-            
+
             for (account_id, proxy_id) in &cfg.account_bindings {
-                tracing::info!("[ProxyPool] Loading binding: account {} -> proxy {}", account_id, proxy_id);
+                tracing::info!(
+                    "[ProxyPool] Loading binding: account {} -> proxy {}",
+                    account_id,
+                    proxy_id
+                );
                 account_bindings.insert(account_id.clone(), proxy_id.clone());
             }
             if !cfg.account_bindings.is_empty() {
@@ -327,11 +335,19 @@ impl ProxyPoolManager {
         config: &ProxyPoolConfig,
     ) -> Result<Option<PoolProxyConfig>, String> {
         // [DEBUG] Log all bindings when checking
-        let all_bindings: Vec<_> = self.account_bindings.iter().map(|kv| (kv.key().clone(), kv.value().clone())).collect();
+        let all_bindings: Vec<_> = self
+            .account_bindings
+            .iter()
+            .map(|kv| (kv.key().clone(), kv.value().clone()))
+            .collect();
         if !all_bindings.is_empty() {
-            tracing::debug!("[Proxy] Checking binding for account {}, available bindings: {:?}", account_id, all_bindings);
+            tracing::debug!(
+                "[Proxy] Checking binding for account {}, available bindings: {:?}",
+                account_id,
+                all_bindings
+            );
         }
-        
+
         if let Some(proxy_id) = self.account_bindings.get(account_id) {
             if let Some(entry) = config.proxies.iter().find(|p| p.id == *proxy_id.value()) {
                 if entry.enabled {
@@ -444,8 +460,8 @@ impl ProxyPoolManager {
         let url_str = crate::proxy::config::normalize_proxy_url(&entry.url);
 
         // 解析 URL 以提取 embedded credentials
-        let parsed_url = url::Url::parse(&url_str)
-            .map_err(|e| format!("Invalid proxy URL: {}", e))?;
+        let parsed_url =
+            url::Url::parse(&url_str).map_err(|e| format!("Invalid proxy URL: {}", e))?;
 
         // 提取 username/password из URL (если есть)
         // url::Url::username() возвращает &str (пустую строку если нет username)
@@ -501,7 +517,11 @@ impl ProxyPoolManager {
         // 检查代理是否存在
         {
             let config = self.config.read().await;
-            tracing::info!("[Bind] Checking proxy {} in pool with {} proxies", proxy_id, config.proxies.len());
+            tracing::info!(
+                "[Bind] Checking proxy {} in pool with {} proxies",
+                proxy_id,
+                config.proxies.len()
+            );
             for p in &config.proxies {
                 tracing::info!("[Bind] Available proxy: {} -> {}", p.id, p.name);
             }
@@ -542,7 +562,11 @@ impl ProxyPoolManager {
             updated_account.proxy_id = Some(proxy_id.clone());
             updated_account.proxy_bound_at = Some(chrono::Utc::now().timestamp());
             if let Err(e) = crate::modules::account::save_account(&updated_account) {
-                tracing::warn!("[ProxyPool] Failed to update account {} proxy_id: {}", account_id, e);
+                tracing::warn!(
+                    "[ProxyPool] Failed to update account {} proxy_id: {}",
+                    account_id,
+                    e
+                );
             }
         }
 
@@ -567,7 +591,11 @@ impl ProxyPoolManager {
             updated_account.proxy_id = None;
             updated_account.proxy_bound_at = None;
             if let Err(e) = crate::modules::account::save_account(&updated_account) {
-                tracing::warn!("[ProxyPool] Failed to clear account {} proxy_id: {}", account_id, e);
+                tracing::warn!(
+                    "[ProxyPool] Failed to clear account {} proxy_id: {}",
+                    account_id,
+                    e
+                );
             }
         }
 
@@ -623,7 +651,13 @@ impl ProxyPoolManager {
         let proxies_to_check: Vec<_> = {
             let config = self.config.read().await;
             // [DEBUG] Log first few proxy URLs to debug corruption
-            for (i, proxy) in config.proxies.iter().filter(|p| p.enabled).take(3).enumerate() {
+            for (i, proxy) in config
+                .proxies
+                .iter()
+                .filter(|p| p.enabled)
+                .take(3)
+                .enumerate()
+            {
                 tracing::debug!("[HealthCheck] Proxy {}: {} -> {}", i, proxy.name, proxy.url);
             }
             config
@@ -701,8 +735,11 @@ impl ProxyPoolManager {
     }
 
     /// 使用指定 URL 检查代理健康状态
-    async fn check_proxy_with_url(&self, entry: &ProxyEntry, check_url: &str) -> (bool, Option<u64>) {
-
+    async fn check_proxy_with_url(
+        &self,
+        entry: &ProxyEntry,
+        check_url: &str,
+    ) -> (bool, Option<u64>) {
         // 尝试构建 Client，如果失败直接视为不健康
         let proxy_res = self.build_proxy_config(entry);
         if let Err(e) = proxy_res {
@@ -722,7 +759,10 @@ impl ProxyPoolManager {
             Ok(c) => c,
             Err(e) => {
                 let err_str = e.to_string();
-                if err_str.contains("SSL") || err_str.contains("TLS") || err_str.contains("certificate") {
+                if err_str.contains("SSL")
+                    || err_str.contains("TLS")
+                    || err_str.contains("certificate")
+                {
                     tracing::error!("Proxy {} build client FAILED (SSL/TLS error): {} - Make sure proxy supports HTTPS or use HTTP URL", entry.url, e);
                 } else {
                     tracing::error!("Proxy {} build client failed: {}", entry.url, e);
@@ -742,7 +782,7 @@ impl ProxyPoolManager {
             Ok(resp) => {
                 let latency = start.elapsed().as_millis() as u64;
                 let status = resp.status();
-                
+
                 // [FIX] Treat redirects (301/302/303/307/308) as healthy - proxy is working!
                 // These are normal responses from proxies that redirect to the final destination
                 if status.is_success() || status.is_redirection() {
@@ -797,7 +837,7 @@ impl ProxyPoolManager {
                 let enabled = config.enabled;
                 let has_proxies = !config.proxies.is_empty();
                 drop(config);
-                
+
                 if has_proxies {
                     if let Err(e) = self.health_check().await {
                         tracing::error!("Proxy pool health check failed: {}", e);

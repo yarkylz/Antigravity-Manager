@@ -225,38 +225,39 @@ async fn auth_middleware_internal(
                         "code": "token_rejected"
                     }
                 });
-                 let response = axum::response::Response::builder()
-                     .status(StatusCode::FORBIDDEN)
-                     .header("Content-Type", "application/json")
-                     .body(axum::body::Body::from(
-                         serde_json::to_string(&body)
-                             .unwrap_or_else(|e| {
-                                 error!("Failed to serialize auth error response: {}", e);
-                                 serde_json::to_string(&serde_json::json!({
-                                     "error": {
-                                         "message": "Internal server error",
-                                         "type": "internal_error",
-                                         "code": "internal_error"
-                                     }
-                                 })).unwrap()
-                             }),
-                     ))
-                     .unwrap_or_else(|e| {
-                         error!("Failed to build auth error response: {}", e);
-                         Response::builder()
-                             .status(StatusCode::INTERNAL_SERVER_ERROR)
-                             .header("Content-Type", "application/json")
-                             .body(axum::body::Body::from(
-                                 serde_json::to_string(&serde_json::json!({
-                                     "error": {
-                                         "message": "Internal server error",
-                                         "type": "internal_error",
-                                         "code": "internal_error"
-                                     }
-                                 })).unwrap()
-                             ))
-                             .unwrap()
-                     });
+                let response = axum::response::Response::builder()
+                    .status(StatusCode::FORBIDDEN)
+                    .header("Content-Type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::to_string(&body).unwrap_or_else(|e| {
+                            error!("Failed to serialize auth error response: {}", e);
+                            serde_json::to_string(&serde_json::json!({
+                                "error": {
+                                    "message": "Internal server error",
+                                    "type": "internal_error",
+                                    "code": "internal_error"
+                                }
+                            }))
+                            .unwrap()
+                        }),
+                    ))
+                    .unwrap_or_else(|e| {
+                        error!("Failed to build auth error response: {}", e);
+                        Response::builder()
+                            .status(StatusCode::INTERNAL_SERVER_ERROR)
+                            .header("Content-Type", "application/json")
+                            .body(axum::body::Body::from(
+                                serde_json::to_string(&serde_json::json!({
+                                    "error": {
+                                        "message": "Internal server error",
+                                        "type": "internal_error",
+                                        "code": "internal_error"
+                                    }
+                                }))
+                                .unwrap(),
+                            ))
+                            .unwrap()
+                    });
                 Ok(response)
             }
             Err(e) => {

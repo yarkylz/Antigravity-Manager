@@ -66,9 +66,24 @@ export const useAccountStore = create<AccountState>((set, get) => ({
     addAccount: async (email: string, refreshToken: string, customLabel?: string, proxyId?: string) => {
         set({ loading: true, error: null });
         try {
-            await accountService.addAccount(email, refreshToken, customLabel, proxyId);
+            const newAccount = await accountService.addAccount(email, refreshToken, customLabel, proxyId);
             await get().fetchAccounts();
             set({ loading: false });
+
+            // Auto onboard + test request (non-fatal)
+            if (newAccount?.id) {
+                try {
+                    await accountService.onboardAccount(newAccount.id);
+                } catch (e) {
+                    console.warn('[AccountStore] Auto-onboard failed (non-fatal):', e);
+                }
+                try {
+                    await accountService.testAccountRequest(newAccount.id);
+                } catch (e) {
+                    console.warn('[AccountStore] Auto-test failed (non-fatal):', e);
+                }
+                await get().fetchAccounts();
+            }
         } catch (error) {
             set({ error: String(error), loading: false });
             throw error;

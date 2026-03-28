@@ -1078,8 +1078,8 @@ impl TokenManager {
                 !quota_protection_enabled || !t.protected_models.contains(normalized_target)
             })
             .filter(|t| {
-                // 排除空配额账号（-1 表示无模型数据）
-                t.remaining_quota.unwrap_or(-1) != -1
+                // 排除目标模型配额为 0 的账号（按目标模型检查，而非全局 MAX）
+                t.model_quotas.get(normalized_target).copied().unwrap_or(0) > 0
             })
             .collect();
 
@@ -1107,21 +1107,22 @@ impl TokenManager {
         let c1 = available[pick1];
         let c2 = available[pick2];
 
-        // 选择配额更高的
-        let selected = if c1.remaining_quota.unwrap_or(0) >= c2.remaining_quota.unwrap_or(0) {
+        // 选择目标模型配额更高的
+        let selected = if c1.model_quotas.get(normalized_target).copied().unwrap_or(0) >= c2.model_quotas.get(normalized_target).copied().unwrap_or(0) {
             c1
         } else {
             c2
         };
 
         tracing::debug!(
-            "🎲 [P2C] Selected {} ({}%) from [{}({}%), {}({}%)]",
+            "🎲 [P2C] Selected {} ({}%) from [{}({}%), {}({}%)] for model {}",
             selected.email,
-            selected.remaining_quota.unwrap_or(0),
+            selected.model_quotas.get(normalized_target).copied().unwrap_or(0),
             c1.email,
-            c1.remaining_quota.unwrap_or(0),
+            c1.model_quotas.get(normalized_target).copied().unwrap_or(0),
             c2.email,
-            c2.remaining_quota.unwrap_or(0)
+            c2.model_quotas.get(normalized_target).copied().unwrap_or(0),
+            normalized_target
         );
 
         Some(selected)
@@ -1749,6 +1750,8 @@ impl TokenManager {
                                     )
                                     && !(quota_protection_enabled
                                         && t.protected_models.contains(&normalized_target))
+                                    // [FIX] 排除目标模型配额为 0 的账号
+                                    && t.model_quotas.get(&normalized_target).copied().unwrap_or(0) > 0
                             });
 
                             if let Some(t) = retry_token {
@@ -1772,6 +1775,8 @@ impl TokenManager {
                                     !attempted.contains(&t.account_id)
                                         && !(quota_protection_enabled
                                             && t.protected_models.contains(&normalized_target))
+                                        // [FIX] 排除目标模型配额为 0 的账号
+                                        && t.model_quotas.get(&normalized_target).copied().unwrap_or(0) > 0
                                 });
 
                                 if let Some(t) = final_token {

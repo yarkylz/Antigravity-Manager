@@ -550,23 +550,8 @@ fn extract_model_ids(value: &serde_json::Value) -> Vec<String> {
                 if let serde_json::Value::Array(arr) = data {
                     for item in arr {
                         push_from_item(&mut out, item);
-    }
-}
-
-/// 单个代理健康检查 (по ID) — для фронтенда и авто-перепроверки
-#[tauri::command]
-pub async fn recheck_proxy(
-    proxy_id: String,
-) -> Result<ProxyPoolConfig, String> {
-    if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
-        manager.check_single_proxy(&proxy_id).await?;
-        let config = manager.config();
-        let pool_config = config.read().await;
-        Ok(pool_config.clone())
-    } else {
-        Err("代理池未初始化".to_string())
-    }
-}
+                    }
+                }
             }
             if let Some(models) = map.get("models") {
                 match models {
@@ -818,5 +803,20 @@ pub async fn get_proxy_pool_config(
         } else {
             Err("服务未运行".to_string())
         }
+    }
+}
+
+/// 单个代理健康检查 (по ID) — для фронтенда и авто-перепроверки
+#[tauri::command]
+pub async fn recheck_proxy(
+    proxy_id: String,
+) -> Result<ProxyPoolConfig, String> {
+    if let Some(manager) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        manager.check_single_proxy(&proxy_id).await?;
+        let config = manager.config();
+        let pool_config = config.read().await;
+        Ok(pool_config.clone())
+    } else {
+        Err("代理池未初始化".to_string())
     }
 }

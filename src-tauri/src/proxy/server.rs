@@ -300,7 +300,7 @@ impl AxumServer {
         port: u16,
         token_manager: Arc<TokenManager>,
         custom_mapping: std::collections::HashMap<String, String>,
-        _request_timeout: u64,
+        request_timeout: u64,
         upstream_proxy: crate::proxy::config::UpstreamProxyConfig,
         user_agent_override: Option<String>,
         security_config: crate::proxy::ProxySecurityConfig,
@@ -347,7 +347,7 @@ impl AxumServer {
         let state = AppState {
             token_manager: token_manager.clone(),
             custom_mapping: custom_mapping_state.clone(),
-            request_timeout: 300, // 5分钟超时
+            request_timeout, // Используем значение из конфига
             thought_signature_map: Arc::new(tokio::sync::Mutex::new(
                 std::collections::HashMap::new(),
             )),

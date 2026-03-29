@@ -556,7 +556,7 @@ pub fn run() {
             commands::proxy::get_preferred_account,
             commands::proxy::clear_proxy_rate_limit,
             commands::proxy::clear_all_proxy_rate_limits,
-            commands::proxy::check_proxy_health,
+            commands::proxy::recheck_proxy,
             // Proxy Pool Binding commands
             commands::proxy_pool::bind_account_proxy,
             commands::proxy_pool::unbind_account_proxy,

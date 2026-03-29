@@ -128,6 +128,7 @@ impl ProxyPoolManager {
     ) -> Client {
         let mut builder = Client::builder()
             .emulation(Emulation::Chrome123)
+            .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(timeout_secs));
 
         // 尝试获取代理配置
@@ -170,14 +171,13 @@ impl ProxyPoolManager {
             builder = builder.proxy(proxy_cfg.proxy);
             // Already logged more detail in get_proxy_for_account or pool selection
         } else if has_bound {
-            // [CRITICAL] 账号有绑定的代理但获取失败！这不应该发生！
-            // 禁止 fallback 到 direct - 返回一个永远超时的 client 让请求失败
+            // [CRITICAL] 账号有绑定的代理但获取失败（auto-recheck也失败了）
+            // 禁止 fallback 到 direct - 返回一个极短超时的 client 让请求立即失败
             tracing::error!(
-                "[Proxy] CRITICAL: Account {:?} has bound proxy but failed to get it! Blocking request (no fallback allowed).",
+                "[Proxy] CRITICAL: Account {:?} has bound proxy but failed to get it (even after auto-recheck)! Blocking request (no fallback allowed).",
                 account_id
             );
-            // 返回一个超时为 0 的 client，实际上会立即超时失败
-            builder = builder.timeout(Duration::from_secs(0));
+            builder = builder.timeout(Duration::from_secs(1));
         } else if let Some(ref upstream) = self.upstream_proxy {
             // Fallback 到应用配置的单上游代理 (从内存读取) - 仅针对无绑定的账号
             let up = upstream.read().await;
@@ -215,6 +215,7 @@ impl ProxyPoolManager {
     ) -> Client {
         let mut builder = Client::builder()
             // 无 Emulation 设置，走纯正的基础 TLS 指纹
+            .connect_timeout(Duration::from_secs(10))
             .timeout(Duration::from_secs(timeout_secs));
 
         // [NEW] 检查账号是否有绑定的代理（用于防止 fallback）
@@ -256,14 +257,13 @@ impl ProxyPoolManager {
         if let Some(proxy_cfg) = proxy_opt {
             builder = builder.proxy(proxy_cfg.proxy);
         } else if has_bound {
-            // [CRITICAL] 账号有绑定的代理但获取失败！这不应该发生！
-            // 禁止 fallback 到 direct - 返回一个永远超时的 client 让请求失败
+            // [CRITICAL] 账号有绑定的代理但获取失败（auto-recheck也失败了）
+            // 禁止 fallback 到 direct - 返回一个极短超时的 client 让请求立即失败
             tracing::error!(
-                "[Proxy] CRITICAL: Account {:?} (Standard Client) has bound proxy but failed to get it! Blocking request (no fallback allowed).",
+                "[Proxy] CRITICAL: Account {:?} (Standard Client) has bound proxy but failed to get it (even after auto-recheck)! Blocking request (no fallback allowed).",
                 account_id
             );
-            // 返回一个超时为 0 的 client，实际上会立即超时失败
-            builder = builder.timeout(Duration::from_secs(0));
+            builder = builder.timeout(Duration::from_secs(1));
         } else if let Some(ref upstream) = self.upstream_proxy {
             // Fallback 到应用配置的单上游代理 (从内存读取) - 仅针对无绑定的账号
             let up = upstream.read().await;
@@ -294,27 +294,110 @@ impl ProxyPoolManager {
     }
 
     /// 为账号获取代理
+    /// [FIX] Авто-перепроверка: если привязанный прокси unhealthy, делаем on-demand recheck
+    /// перед блокировкой запроса. Это устраняет ложные таймауты.
     pub async fn get_proxy_for_account(
         &self,
         account_id: &str,
     ) -> Result<Option<PoolProxyConfig>, String> {
-        let config = self.config.read().await;
+        // Первая попытка — читаем конфиг
+        let (bound_proxy_id, is_unhealthy) = {
+            let config = self.config.read().await;
 
+            if !config.enabled || config.proxies.is_empty() {
+                return Ok(None);
+            }
+
+            // Проверяем привязку
+            if let Some(proxy_id_ref) = self.account_bindings.get(account_id) {
+                let proxy_id = proxy_id_ref.value().clone();
+                if let Some(entry) = config.proxies.iter().find(|p| p.id == proxy_id) {
+                    if entry.enabled {
+                        if entry.is_healthy {
+                            // Прокси здоров — сразу возвращаем
+                            let proxy_cfg = self.build_proxy_config(entry)?;
+                            tracing::info!(
+                                "[Proxy] Route: Account {} -> Proxy {} (Bound)",
+                                account_id,
+                                proxy_cfg.entry_id
+                            );
+                            return Ok(Some(proxy_cfg));
+                        } else {
+                            // Прокси unhealthy — запомним для recheck
+                            (Some(proxy_id), true)
+                        }
+                    } else {
+                        (Some(proxy_id), false)
+                    }
+                } else {
+                    (Some(proxy_id), false)
+                }
+            } else {
+                (None, false)
+            }
+            // read lock dropped here
+        };
+
+        // Авто-перепроверка: прокси привязан но unhealthy → recheck перед блокировкой
+        if let (Some(ref proxy_id), true) = (&bound_proxy_id, is_unhealthy) {
+            tracing::info!(
+                "[Proxy] Account {} bound proxy {} is unhealthy — triggering on-demand recheck before blocking",
+                account_id,
+                proxy_id
+            );
+
+            match self.check_single_proxy(proxy_id).await {
+                Ok((true, _latency)) => {
+                    // Прокси восстановился! Читаем обновлённый конфиг
+                    tracing::info!(
+                        "[Proxy] Account {} bound proxy {} recovered after recheck!",
+                        account_id,
+                        proxy_id
+                    );
+                    let config = self.config.read().await;
+                    if let Some(entry) = config.proxies.iter().find(|p| p.id == *proxy_id) {
+                        if entry.enabled && entry.is_healthy {
+                            let proxy_cfg = self.build_proxy_config(entry)?;
+                            tracing::info!(
+                                "[Proxy] Route: Account {} -> Proxy {} (Bound, recovered)",
+                                account_id,
+                                proxy_cfg.entry_id
+                            );
+                            return Ok(Some(proxy_cfg));
+                        }
+                    }
+                }
+                Ok((false, _)) => {
+                    tracing::warn!(
+                        "[Proxy] Account {} bound proxy {} still unhealthy after recheck. Blocking request.",
+                        account_id,
+                        proxy_id
+                    );
+                    return Err(format!(
+                        "Account {} has bound proxy {} which is unhealthy (timeout, confirmed by recheck). Request blocked for security.",
+                        account_id, proxy_id
+                    ));
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "[Proxy] Account {} bound proxy {} recheck failed: {}. Blocking request.",
+                        account_id,
+                        proxy_id,
+                        e
+                    );
+                    return Err(format!(
+                        "Account {} has bound proxy {} which is unhealthy (recheck error: {}). Request blocked for security.",
+                        account_id, proxy_id, e
+                    ));
+                }
+            }
+        }
+
+        // Нет привязки или привязка к disabled/missing прокси — выбираем из пула
+        let config = self.config.read().await;
         if !config.enabled || config.proxies.is_empty() {
             return Ok(None);
         }
-
-        // 1. 优先使用账号绑定 (专属 IP)
-        if let Some(proxy) = self.get_bound_proxy(account_id, &config).await? {
-            tracing::info!(
-                "[Proxy] Route: Account {} -> Proxy {} (Bound)",
-                account_id,
-                proxy.entry_id
-            );
-            return Ok(Some(proxy));
-        }
-
-        // 2. 否则从池中策略选择 (公用池)
         let res = self.select_proxy_from_pool(&config).await?;
         if let Some(ref p) = res {
             tracing::info!(
@@ -324,45 +407,6 @@ impl ProxyPoolManager {
             );
         }
         Ok(res)
-    }
-
-    /// 获取账号绑定的代理
-    /// [FIX] Если у аккаунта есть привязанный прокси, но он unhealthy - возвращаем ошибку,
-    /// чтобы предотвратить fallback на direct/upstream (критично для безопасности)
-    async fn get_bound_proxy(
-        &self,
-        account_id: &str,
-        config: &ProxyPoolConfig,
-    ) -> Result<Option<PoolProxyConfig>, String> {
-        // [DEBUG] Log all bindings when checking
-        let all_bindings: Vec<_> = self
-            .account_bindings
-            .iter()
-            .map(|kv| (kv.key().clone(), kv.value().clone()))
-            .collect();
-        if !all_bindings.is_empty() {
-            tracing::debug!(
-                "[Proxy] Checking binding for account {}, available bindings: {:?}",
-                account_id,
-                all_bindings
-            );
-        }
-
-        if let Some(proxy_id) = self.account_bindings.get(account_id) {
-            if let Some(entry) = config.proxies.iter().find(|p| p.id == *proxy_id.value()) {
-                if entry.enabled {
-                    // [FIX] Если привязанный прокси unhealthy - возвращаем ошибку, не fallback
-                    if !entry.is_healthy {
-                        return Err(format!(
-                            "Account {} has bound proxy {} which is unhealthy (timeout). Request blocked for security.",
-                            account_id, entry.id
-                        ));
-                    }
-                    return Ok(Some(self.build_proxy_config(entry)?));
-                }
-            }
-        }
-        Ok(None)
     }
 
     /// 从代理池中选择代理
@@ -638,6 +682,54 @@ impl ProxyPoolManager {
         }
     }
 
+    /// 单个代理健康检查 (по ID) — используется для авто-перепроверки при таймауте
+    /// Возвращает (is_healthy, latency) и обновляет статус в конфиге
+    pub async fn check_single_proxy(&self, proxy_id: &str) -> Result<(bool, Option<u64>), String> {
+        // Клонируем нужный ProxyEntry из конфига
+        let entry = {
+            let config = self.config.read().await;
+            config.proxies.iter().find(|p| p.id == proxy_id).cloned()
+        };
+
+        let entry = match entry {
+            Some(e) => e,
+            None => return Err(format!("Proxy {} not found", proxy_id)),
+        };
+
+        if !entry.enabled {
+            return Err(format!("Proxy {} is disabled", proxy_id));
+        }
+
+        tracing::info!(
+            "[HealthCheck] On-demand recheck for proxy {} ({})",
+            entry.name,
+            entry.url
+        );
+
+        let (is_healthy, latency) = self.check_proxy_health(&entry).await;
+
+        // Обновляем статус в конфиге
+        {
+            let mut config = self.config.write().await;
+            if let Some(proxy) = config.proxies.iter_mut().find(|p| p.id == proxy_id) {
+                proxy.is_healthy = is_healthy;
+                proxy.latency = latency;
+                proxy.last_check_time = Some(chrono::Utc::now().timestamp());
+            }
+        }
+
+        let status_str = if is_healthy { "HEALTHY" } else { "UNHEALTHY" };
+        tracing::info!(
+            "[HealthCheck] On-demand recheck result for {} ({}): {} (latency: {:?}ms)",
+            entry.name,
+            entry.url,
+            status_str,
+            latency
+        );
+
+        Ok((is_healthy, latency))
+    }
+
     /// 健康检查
     pub async fn health_check(&self) -> Result<(), String> {
         // [DEBUG] Log config source for health check
@@ -734,7 +826,7 @@ impl ProxyPoolManager {
         (false, None)
     }
 
-    /// 使用指定 URL 检查代理健康状态
+    /// 使用指定 URL 检查代理健康状态 (с retry для устойчивости к кратковременным сбоям)
     async fn check_proxy_with_url(
         &self,
         entry: &ProxyEntry,
@@ -751,7 +843,8 @@ impl ProxyPoolManager {
         let client_result = Client::builder()
             .proxy(proxy_cfg.proxy)
             .emulation(Emulation::Chrome123)
-            .timeout(Duration::from_secs(10))
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(20))
             .user_agent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
             .build();
 
@@ -771,59 +864,85 @@ impl ProxyPoolManager {
             }
         };
 
-        let start = std::time::Instant::now();
-        tracing::info!(
-            "[HealthCheck] Starting check for proxy {} via {}",
-            entry.url,
-            check_url
-        );
-
-        match client.get(check_url).send().await {
-            Ok(resp) => {
-                let latency = start.elapsed().as_millis() as u64;
-                let status = resp.status();
-
-                // [FIX] Treat redirects (301/302/303/307/308) as healthy - proxy is working!
-                // These are normal responses from proxies that redirect to the final destination
-                if status.is_success() || status.is_redirection() {
-                    tracing::info!(
-                        "[HealthCheck] Proxy {} is healthy ({}ms, status: {})",
-                        entry.url,
-                        latency,
-                        status
-                    );
-                    (true, Some(latency))
-                } else {
-                    tracing::warn!(
-                        "[HealthCheck] Proxy {} status error: {} (latency: {}ms)",
-                        entry.url,
-                        status,
-                        latency
-                    );
-                    (false, None)
-                }
+        // Retry: 2 попытки на URL, с паузой 1с между ними
+        const MAX_ATTEMPTS: u32 = 2;
+        for attempt in 1..=MAX_ATTEMPTS {
+            let start = std::time::Instant::now();
+            if attempt == 1 {
+                tracing::info!(
+                    "[HealthCheck] Starting check for proxy {} via {}",
+                    entry.url,
+                    check_url
+                );
+            } else {
+                tracing::info!(
+                    "[HealthCheck] Retry #{} for proxy {} via {}",
+                    attempt,
+                    entry.url,
+                    check_url
+                );
             }
-            Err(e) => {
-                let elapsed = start.elapsed().as_millis();
-                let error_msg = e.to_string();
-                if error_msg.contains("timeout") || error_msg.contains("timed out") {
-                    tracing::warn!(
-                        "[HealthCheck] Proxy {} TIMEOUT after {}ms: {}",
-                        entry.url,
-                        elapsed,
-                        error_msg
-                    );
-                } else {
-                    tracing::warn!(
-                        "[HealthCheck] Proxy {} request failed after {}ms: {}",
-                        entry.url,
-                        elapsed,
-                        error_msg
-                    );
+
+            match client.get(check_url).send().await {
+                Ok(resp) => {
+                    let latency = start.elapsed().as_millis() as u64;
+                    let status = resp.status();
+
+                    // [FIX] Treat redirects (301/302/303/307/308) as healthy - proxy is working!
+                    if status.is_success() || status.is_redirection() {
+                        tracing::info!(
+                            "[HealthCheck] Proxy {} is healthy ({}ms, status: {}, attempt #{})",
+                            entry.url,
+                            latency,
+                            status,
+                            attempt
+                        );
+                        return (true, Some(latency));
+                    } else {
+                        tracing::warn!(
+                            "[HealthCheck] Proxy {} status error: {} (latency: {}ms, attempt #{})",
+                            entry.url,
+                            status,
+                            latency,
+                            attempt
+                        );
+                        // Non-timeout HTTP error — no retry needed, proxy is reachable but returning errors
+                        return (false, None);
+                    }
                 }
-                (false, None)
+                Err(e) => {
+                    let elapsed = start.elapsed().as_millis();
+                    let error_msg = e.to_string();
+                    let is_timeout = error_msg.contains("timeout") || error_msg.contains("timed out");
+
+                    if is_timeout {
+                        tracing::warn!(
+                            "[HealthCheck] Proxy {} TIMEOUT after {}ms (attempt #{}): {}",
+                            entry.url,
+                            elapsed,
+                            attempt,
+                            error_msg
+                        );
+                    } else {
+                        tracing::warn!(
+                            "[HealthCheck] Proxy {} request failed after {}ms (attempt #{}): {}",
+                            entry.url,
+                            elapsed,
+                            attempt,
+                            error_msg
+                        );
+                    }
+
+                    // Retry only on transient errors (timeout, connection reset)
+                    if attempt < MAX_ATTEMPTS {
+                        tokio::time::sleep(Duration::from_secs(1)).await;
+                        continue;
+                    }
+                }
             }
         }
+
+        (false, None)
     }
 
     /// 启动健康检查循环

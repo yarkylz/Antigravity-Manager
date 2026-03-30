@@ -831,7 +831,13 @@ impl AxumServer {
                                 let service = TowerToHyperService::new(app_with_info);
 
                                 tokio::task::spawn(async move {
-                                    if let Err(err) = http1::Builder::new()
+                                    let mut builder = http1::Builder::new();
+                                    builder
+                                        .timer(hyper_util::rt::TokioTimer::new())
+                                        .header_read_timeout(std::time::Duration::from_secs(30))
+                                        .keep_alive(true);
+
+                                    if let Err(err) = builder
                                         .serve_connection(io, service)
                                         .with_upgrades() // 支持 WebSocket (如果以后需要)
                                         .await

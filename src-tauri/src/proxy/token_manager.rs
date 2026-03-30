@@ -163,7 +163,11 @@ impl TokenManager {
     }
 
     /// 从主应用账号目录加载所有账号
+    /// Uses concurrent loading (up to 20 accounts in parallel) to avoid blocking
+    /// when thousands of accounts need processing (e.g. mass invalid_grant events).
     pub async fn load_accounts(&self) -> Result<usize, String> {
+        use futures::stream::{self, StreamExt};
+
         let accounts_dir = self.data_dir.join("accounts");
 
         if !accounts_dir.exists() {
@@ -181,31 +185,47 @@ impl TokenManager {
         let entries =
             std::fs::read_dir(&accounts_dir).map_err(|e| format!("读取账号目录失败: {}", e))?;
 
+        // Collect JSON paths first (cheap sync I/O), then process concurrently
+        let paths: Vec<PathBuf> = entries
+            .filter_map(|entry| {
+                let entry = entry.ok()?;
+                let path = entry.path();
+                if path.extension().and_then(|s| s.to_str()) == Some("json") {
+                    Some(path)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let total = paths.len();
+        tracing::info!("Loading {} account files concurrently (max 20)...", total);
+
+        // Process accounts concurrently with bounded parallelism (matching proxy health_check pattern)
+        let concurrency_limit = 20usize;
+        let results: Vec<_> = stream::iter(paths)
+            .map(|path| async move {
+                match self.load_single_account(&path).await {
+                    Ok(Some(token)) => Some(token),
+                    Ok(None) => None, // 跳过无效/禁用账号
+                    Err(e) => {
+                        tracing::debug!("加载账号失败 {:?}: {}", path, e);
+                        None
+                    }
+                }
+            })
+            .buffer_unordered(concurrency_limit)
+            .collect()
+            .await;
+
         let mut count = 0;
-
-        for entry in entries {
-            let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
-            let path = entry.path();
-
-            if path.extension().and_then(|s| s.to_str()) != Some("json") {
-                continue;
-            }
-
-            // 尝试加载账号
-            match self.load_single_account(&path).await {
-                Ok(Some(token)) => {
-                    let account_id = token.account_id.clone();
-                    self.tokens.insert(account_id, token);
-                    count += 1;
-                }
-                Ok(None) => {
-                    // 跳过无效账号
-                }
-                Err(e) => {
-                    tracing::debug!("加载账号失败 {:?}: {}", path, e);
-                }
-            }
+        for token in results.into_iter().flatten() {
+            let account_id = token.account_id.clone();
+            self.tokens.insert(account_id, token);
+            count += 1;
         }
+
+        tracing::info!("Loaded {}/{} accounts successfully", count, total);
 
         Ok(count)
     }

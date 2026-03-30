@@ -1340,14 +1340,13 @@ impl TokenManager {
                 return health_cmp;
             }
 
-            // Priority 3: Reset time (earlier is better, but only if diff > 10 min)
+            // Priority 3: Reset time (earlier is better)
+            // Bucket into RESET_TIME_THRESHOLD_SECS intervals to avoid transitivity violations
             let reset_a = a.reset_time.unwrap_or(i64::MAX);
             let reset_b = b.reset_time.unwrap_or(i64::MAX);
-            if (reset_a - reset_b).abs() >= RESET_TIME_THRESHOLD_SECS {
-                reset_a.cmp(&reset_b)
-            } else {
-                std::cmp::Ordering::Equal
-            }
+            let bucket_a = reset_a / RESET_TIME_THRESHOLD_SECS;
+            let bucket_b = reset_b / RESET_TIME_THRESHOLD_SECS;
+            bucket_a.cmp(&bucket_b)
         });
 
         // 【调试日志】打印排序后的账号顺序（显示目标模型的 quota）
@@ -3277,15 +3276,15 @@ mod tests {
         }
 
         // Third: compare by reset time (earlier/closer is better)
+        // Third: compare by reset time (earlier is better)
+        // Bucket into RESET_TIME_THRESHOLD_SECS intervals to avoid transitivity violations
         let reset_a = a.reset_time.unwrap_or(i64::MAX);
         let reset_b = b.reset_time.unwrap_or(i64::MAX);
-        let reset_diff = (reset_a - reset_b).abs();
-
-        if reset_diff >= RESET_TIME_THRESHOLD_SECS {
-            let reset_cmp = reset_a.cmp(&reset_b);
-            if reset_cmp != Ordering::Equal {
-                return reset_cmp;
-            }
+        let bucket_a = reset_a / RESET_TIME_THRESHOLD_SECS;
+        let bucket_b = reset_b / RESET_TIME_THRESHOLD_SECS;
+        let reset_cmp = bucket_a.cmp(&bucket_b);
+        if reset_cmp != Ordering::Equal {
+            return reset_cmp;
         }
 
         // Fourth: compare by remaining quota percentage (higher is better)

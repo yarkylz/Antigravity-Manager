@@ -39,7 +39,7 @@ pub async fn add_account(
 
     // Apply custom label and proxy binding if provided (atomic update to avoid TOCTOU race)
     let mut needs_persistence = false;
-    let mut account_json: Option<serde_json::Value> = None;
+    let _account_json: Option<serde_json::Value> = None;
     let data_dir = modules::account::get_data_dir()?;
     let account_path = data_dir
         .join("accounts")

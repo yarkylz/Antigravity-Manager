@@ -2101,16 +2101,18 @@ async fn call_gemini_sync(
         pool.get_effective_standard_client(Some(&account_id), 120).await
     } else {
         // Fallback: no pool available, try upstream proxy from in-memory state
-        let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(120));
+        let mut builder = rquest::Client::builder()
+            .connect_timeout(Duration::from_secs(10))
+            .timeout(Duration::from_secs(120));
         let up = upstream_proxy.read().await;
         if up.enabled && !up.url.is_empty() {
             let url = crate::proxy::config::normalize_proxy_url(&up.url);
-            if let Ok(proxy) = reqwest::Proxy::all(&url) {
+            if let Ok(proxy) = rquest::Proxy::all(&url) {
                 builder = builder.proxy(proxy);
                 debug!("[{}] Gemini call using upstream proxy: {}", trace_id, url);
             }
         }
-        builder.build().unwrap_or_else(|_| reqwest::Client::new())
+        builder.build().unwrap_or_else(|_| rquest::Client::new())
     };
 
     let response = client

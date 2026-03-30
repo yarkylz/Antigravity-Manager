@@ -412,7 +412,7 @@ async fn ensure_oauth_flow_prepared(
     // Cancellation signal (supports multiple consumers)
     let (cancel_tx, cancel_rx) = watch::channel(false);
     // Use mpsc instead of oneshot to allow multiple senders (listener OR manual input)
-    let (code_tx, code_rx) = mpsc::channel::<Result<String, String>>(1);
+    let (code_tx, code_rx) = mpsc::channel::<Result<oauth::TokenResponse, String>>(1);
 
     // Start listeners immediately: even if the user authorizes before clicking "Start OAuth",
     // the browser can still hit our callback and finish the flow.

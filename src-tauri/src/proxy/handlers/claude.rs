@@ -587,12 +587,20 @@ pub async fn handle_messages(
     let mut last_status = StatusCode::SERVICE_UNAVAILABLE; // Default to 503 if no response reached
 
     for attempt in 0..max_attempts {
+        debug!(
+            "[{}] 🔍 [DIAG] Loop iteration start | attempt: {}/{}",
+            trace_id, attempt, max_attempts
+        );
         // 2. 模型路由解析
         let mut mapped_model = crate::proxy::common::model_mapping::resolve_model_route(
             &request_for_body.model,
             &*state.custom_mapping.read().await,
         );
         last_mapped_model = Some(mapped_model.clone());
+        debug!(
+            "[{}] 🔍 [DIAG] Model route resolved: {} -> {}",
+            trace_id, request_for_body.model, mapped_model
+        );
 
         // 将 Claude 工具转为 Value 数组以便探测联网
         let tools_val: Option<Vec<Value>> = request_for_body.tools.as_ref().map(|list| {
@@ -618,17 +626,29 @@ pub async fn handle_messages(
         let session_id = Some(session_id_str.as_str());
 
         let force_rotate_token = attempt > 0;
-        let (access_token, project_id, email, account_id, _wait_ms) = match token_manager
+        debug!(
+            "[{}] 🔍 [DIAG] Pre-get_token | attempt: {} | request_type: {} | final_model: {} | session_id: {:?}",
+            trace_id, attempt, config.request_type, config.final_model, session_id
+        );
+        let token_result = token_manager
             .get_token(
                 &config.request_type,
                 force_rotate_token,
                 session_id,
                 &config.final_model,
             )
-            .await
-        {
+            .await;
+        debug!(
+            "[{}] 🔍 [DIAG] Post-get_token | success: {} | attempt: {}",
+            trace_id, token_result.is_ok(), attempt
+        );
+        let (access_token, project_id, email, account_id, _wait_ms) = match token_result {
             Ok(t) => t,
             Err(e) => {
+                tracing::warn!(
+                    "[{}] 🔍 [DIAG] get_token FAILED: {}",
+                    trace_id, e
+                );
                 let safe_message = if e.contains("invalid_grant") {
                     "OAuth refresh failed (invalid_grant): refresh_token likely revoked/expired; reauthorize account(s) to restore service.".to_string()
                 } else {

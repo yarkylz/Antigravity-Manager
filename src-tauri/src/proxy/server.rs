@@ -739,6 +739,34 @@ impl AxumServer {
             ))
             .layer(cors_layer())
             .layer(DefaultBodyLimit::max(max_body_size)) // 放宽 body 大小限制
+            .layer(tower_http::catch_panic::CatchPanicLayer::custom(|panic_info: Box<dyn std::any::Any + Send + 'static>| {
+                let detail = if let Some(s) = panic_info.downcast_ref::<String>() {
+                    s.clone()
+                } else if let Some(s) = panic_info.downcast_ref::<&str>() {
+                    s.to_string()
+                } else {
+                    "Unknown panic".to_string()
+                };
+                tracing::error!("🔥 [PANIC CAUGHT] Handler panicked: {}", detail);
+                axum::http::Response::builder()
+                    .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                    .header("content-type", "application/json")
+                    .body(axum::body::Body::from(
+                        serde_json::json!({
+                            "type": "error",
+                            "error": {
+                                "type": "api_error",
+                                "message": format!("Internal server error (panic): {}", detail)
+                            }
+                        }).to_string()
+                    ))
+                    .unwrap_or_else(|_| {
+                        axum::http::Response::builder()
+                            .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                            .body(axum::body::Body::from("Internal server error"))
+                            .unwrap()
+                    })
+            }))
             .with_state(state.clone());
 
         // 静态文件托管 (用于 Headless/Docker 模式)

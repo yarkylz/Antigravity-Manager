@@ -13,8 +13,8 @@ struct OAuthFlowState {
     redirect_uri: String,
     state: String,
     cancel_tx: watch::Sender<bool>,
-    code_tx: mpsc::Sender<Result<String, String>>,
-    code_rx: Option<mpsc::Receiver<Result<String, String>>>,
+    code_tx: mpsc::Sender<Result<oauth::TokenResponse, String>>,
+    code_rx: Option<mpsc::Receiver<Result<oauth::TokenResponse, String>>>,
 }
 
 static OAUTH_FLOW_STATE: OnceLock<Mutex<Option<OAuthFlowState>>> = OnceLock::new();
@@ -125,7 +125,7 @@ async fn process_oauth_callback(
     code: &str,
     redirect_uri: &str,
     _app_handle: Option<tauri::AppHandle>,
-) -> (CallbackOutcome, Result<String, String>) {
+) -> (CallbackOutcome, Result<oauth::TokenResponse, String>) {
     // Step 1: Exchange authorization code for tokens
     let token_res = match oauth::exchange_code(code, redirect_uri).await {
         Ok(t) => t,
@@ -223,7 +223,7 @@ async fn process_oauth_callback(
                 CallbackOutcome::Error {
                     message: format!("Token refresh failed during onboarding: {}", e),
                 },
-                Ok(code.to_string()),
+                Ok(token_res.clone()),
             );
         }
     };
@@ -252,7 +252,7 @@ async fn process_oauth_callback(
                                 "Account access denied (403 Forbidden). Verification required."
                                     .to_string(),
                         },
-                        Ok(code.to_string()),
+                        Ok(token_res.clone()),
                     )
                 } else {
                     (
@@ -260,7 +260,7 @@ async fn process_oauth_callback(
                             email,
                             message: "Account access denied (403 Forbidden).".to_string(),
                         },
-                        Ok(code.to_string()),
+                        Ok(token_res.clone()),
                     )
                 }
             } else if let Some(ref reason) = quota_data.restriction_reason {
@@ -280,7 +280,7 @@ async fn process_oauth_callback(
                             verification_url: url,
                             message: format!("Account is restricted: {}", reason),
                         },
-                        Ok(code.to_string()),
+                        Ok(token_res.clone()),
                     )
                 } else {
                     (
@@ -288,7 +288,7 @@ async fn process_oauth_callback(
                             email,
                             message: format!("Account is restricted: {}", reason),
                         },
-                        Ok(code.to_string()),
+                        Ok(token_res.clone()),
                     )
                 }
             } else {
@@ -305,7 +305,7 @@ async fn process_oauth_callback(
                         tier,
                         model_count,
                     },
-                    Ok(code.to_string()),
+                    Ok(token_res.clone()),
                 )
             }
         }
@@ -322,7 +322,7 @@ async fn process_oauth_callback(
                     tier: "Unknown".to_string(),
                     model_count: 0,
                 },
-                Ok(code.to_string()),
+                Ok(token_res.clone()),
             )
         }
     }
@@ -672,25 +672,24 @@ pub async fn start_oauth_flow(
             .map_err(|e| format!("failed_to_open_browser: {}", e))?;
     }
 
-    // Take code_rx to wait for it
-    let (mut code_rx, redirect_uri) = {
+    // Take code_rx to wait for token
+    let mut code_rx = {
         let mut lock = get_oauth_flow_state()
             .lock()
             .map_err(|_| "OAuth state lock corrupted".to_string())?;
         let Some(state) = lock.as_mut() else {
             return Err("OAuth state does not exist".to_string());
         };
-        let rx = state
+        state
             .code_rx
             .take()
-            .ok_or_else(|| "OAuth authorization already in progress".to_string())?;
-        (rx, state.redirect_uri.clone())
+            .ok_or_else(|| "OAuth authorization already in progress".to_string())?
     };
 
-    // Wait for code (if user has already authorized, this returns immediately)
+    // Wait for TokenResponse (already exchanged by process_oauth_callback)
     // For mpsc, we use recv()
-    let code = match code_rx.recv().await {
-        Some(Ok(code)) => code,
+    let token_res = match code_rx.recv().await {
+        Some(Ok(token)) => token,
         Some(Err(e)) => return Err(e),
         None => return Err("OAuth flow channel closed unexpectedly".to_string()),
     };
@@ -700,7 +699,7 @@ pub async fn start_oauth_flow(
         *lock = None;
     }
 
-    oauth::exchange_code(&code, &redirect_uri).await
+    Ok(token_res)
 }
 
 /// Завершить OAuth flow без открытия браузера.
@@ -712,8 +711,8 @@ pub async fn complete_oauth_flow(
     // Ensure URL + listeners exist
     let _ = ensure_oauth_flow_prepared(app_handle).await?;
 
-    // Take receiver to wait for code
-    let (mut code_rx, redirect_uri) = {
+    // Take receiver to wait for token
+    let (mut code_rx, _redirect_uri) = {
         let mut lock = get_oauth_flow_state()
             .lock()
             .map_err(|_| "OAuth state lock corrupted".to_string())?;
@@ -727,8 +726,8 @@ pub async fn complete_oauth_flow(
         (rx, state.redirect_uri.clone())
     };
 
-    let code = match code_rx.recv().await {
-        Some(Ok(code)) => code,
+    let token_res = match code_rx.recv().await {
+        Some(Ok(token)) => token,
         Some(Err(e)) => return Err(e),
         None => return Err("OAuth flow channel closed unexpectedly".to_string()),
     };
@@ -737,7 +736,7 @@ pub async fn complete_oauth_flow(
         *lock = None;
     }
 
-    oauth::exchange_code(&code, &redirect_uri).await
+    Ok(token_res)
 }
 
 /// Manually submit an OAuth code to complete the flow.
@@ -747,7 +746,7 @@ pub async fn submit_oauth_code(
     code_input: String,
     state_input: Option<String>,
 ) -> Result<(), String> {
-    let tx = {
+    let (tx, redirect_uri) = {
         let lock = get_oauth_flow_state().lock().map_err(|e| e.to_string())?;
         if let Some(state) = lock.as_ref() {
             // Verify state if provided
@@ -756,7 +755,7 @@ pub async fn submit_oauth_code(
                     return Err("OAuth state mismatch (CSRF protection)".to_string());
                 }
             }
-            state.code_tx.clone()
+            (state.code_tx.clone(), state.redirect_uri.clone())
         } else {
             return Err("No active OAuth flow found".to_string());
         }
@@ -776,12 +775,15 @@ pub async fn submit_oauth_code(
         code_input
     };
 
-    crate::modules::logger::log_info("Received manual OAuth code submission");
+    crate::modules::logger::log_info("Received manual OAuth code submission, exchanging...");
 
-    // Send to the channel
-    tx.send(Ok(code))
+    // Exchange code for token before sending through channel
+    let token_res = oauth::exchange_code(&code, &redirect_uri).await?;
+
+    // Send TokenResponse to the channel
+    tx.send(Ok(token_res))
         .await
-        .map_err(|_| "Failed to send code to OAuth flow (receiver dropped)".to_string())?;
+        .map_err(|_| "Failed to send token to OAuth flow (receiver dropped)".to_string())?;
 
     Ok(())
 }
@@ -790,7 +792,7 @@ pub async fn submit_oauth_code(
 pub fn prepare_oauth_flow_manually(
     redirect_uri: String,
     state_str: String,
-) -> Result<(String, mpsc::Receiver<Result<String, String>>), String> {
+) -> Result<(String, mpsc::Receiver<Result<oauth::TokenResponse, String>>), String> {
     let auth_url = oauth::get_auth_url(&redirect_uri, &state_str);
 
     // Check if we can reuse existing state

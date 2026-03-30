@@ -3260,54 +3260,42 @@ async fn admin_prepare_oauth_url_web(
 
     // 启动后台任务处理回调/手动提交的代码
     let token_manager = state.token_manager.clone();
-    let redirect_uri_clone = redirect_uri.clone();
     tokio::spawn(async move {
         match code_rx.recv().await {
-            Some(Ok(code)) => {
+            Some(Ok(token_resp)) => {
                 crate::modules::logger::log_info(
-                    "Consuming manually submitted OAuth code in background",
+                    "Consuming OAuth token response in background",
                 );
-                // 为 Web 回调提供简化的后端处理流程
-                match crate::modules::oauth::exchange_code(&code, &redirect_uri_clone).await {
-                    Ok(token_resp) => {
-                        // Success! Now add/upsert account
-                        if let Some(refresh_token) = &token_resp.refresh_token {
-                            match token_manager.get_user_info(refresh_token).await {
-                                Ok(user_info) => {
-                                    if let Err(e) = token_manager
-                                        .add_account(&user_info.email, refresh_token)
-                                        .await
-                                    {
-                                        crate::modules::logger::log_error(&format!(
-                                            "Failed to save account in background OAuth: {}",
-                                            e
-                                        ));
-                                    } else {
-                                        crate::modules::logger::log_info(&format!(
-                                            "Successfully added account {} via background OAuth",
-                                            user_info.email
-                                        ));
-                                    }
-                                }
-                                Err(e) => {
-                                    crate::modules::logger::log_error(&format!(
-                                        "Failed to fetch user info in background OAuth: {}",
-                                        e
-                                    ));
-                                }
+                // Channel now carries TokenResponse directly (already exchanged)
+                if let Some(refresh_token) = &token_resp.refresh_token {
+                    match token_manager.get_user_info(refresh_token).await {
+                        Ok(user_info) => {
+                            if let Err(e) = token_manager
+                                .add_account(&user_info.email, refresh_token)
+                                .await
+                            {
+                                crate::modules::logger::log_error(&format!(
+                                    "Failed to save account in background OAuth: {}",
+                                    e
+                                ));
+                            } else {
+                                crate::modules::logger::log_info(&format!(
+                                    "Successfully added account {} via background OAuth",
+                                    user_info.email
+                                ));
                             }
-                        } else {
-                            crate::modules::logger::log_error(
-                                "Background OAuth error: Google did not return a refresh_token.",
-                            );
+                        }
+                        Err(e) => {
+                            crate::modules::logger::log_error(&format!(
+                                "Failed to fetch user info in background OAuth: {}",
+                                e
+                            ));
                         }
                     }
-                    Err(e) => {
-                        crate::modules::logger::log_error(&format!(
-                            "Background OAuth exchange failed: {}",
-                            e
-                        ));
-                    }
+                } else {
+                    crate::modules::logger::log_error(
+                        "Background OAuth error: Google did not return a refresh_token.",
+                    );
                 }
             }
             Some(Err(e)) => {

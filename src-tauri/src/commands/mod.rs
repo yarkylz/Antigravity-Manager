@@ -579,6 +579,9 @@ pub async fn start_oauth_login(
     // 应用 custom label 和 proxy binding
     apply_account_metadata(&app_handle, &mut account, custom_label, proxy_id).await?;
 
+    // Auto-generate device fingerprint
+    auto_generate_device_fingerprint(&account);
+
     // 自动触发刷新额度
     let _ = internal_refresh_account_quota(&app_handle, &mut account).await;
 

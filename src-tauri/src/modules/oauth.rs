@@ -8,7 +8,7 @@ const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v2/userinfo";
 
 const AUTH_URL: &str = "https://accounts.google.com/o/oauth2/v2/auth";
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TokenResponse {
     pub access_token: String,
     pub expires_in: i64,

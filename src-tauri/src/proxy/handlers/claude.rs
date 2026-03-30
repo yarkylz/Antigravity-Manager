@@ -2096,8 +2096,11 @@ async fn call_gemini_sync(
 
     debug!("[{}] Calling Gemini API: {}", trace_id, model);
 
-    // Build proxy-aware client using upstream proxy config (from in-memory state)
-    let client = {
+    // Build proxy-aware client using account's bound proxy (via proxy pool)
+    let client = if let Some(pool) = crate::proxy::proxy_pool::get_global_proxy_pool() {
+        pool.get_effective_standard_client(Some(&account_id), 120).await
+    } else {
+        // Fallback: no pool available, try upstream proxy from in-memory state
         let mut builder = reqwest::Client::builder().timeout(Duration::from_secs(120));
         let up = upstream_proxy.read().await;
         if up.enabled && !up.url.is_empty() {

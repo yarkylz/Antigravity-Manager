@@ -1334,10 +1334,8 @@ impl TokenManager {
             }
 
             // Priority 2: Health score (higher is better)
-            let health_cmp = b
-                .health_score
-                .partial_cmp(&a.health_score)
-                .unwrap_or(std::cmp::Ordering::Equal);
+            // Use total_cmp to guarantee total order (NaN-safe) — partial_cmp breaks transitivity
+            let health_cmp = b.health_score.total_cmp(&a.health_score);
             if health_cmp != std::cmp::Ordering::Equal {
                 return health_cmp;
             }
@@ -3272,10 +3270,8 @@ mod tests {
         }
 
         // Second: compare by health score (higher is better)
-        let health_cmp = b
-            .health_score
-            .partial_cmp(&a.health_score)
-            .unwrap_or(Ordering::Equal);
+        // Use total_cmp to guarantee total order (NaN-safe) — partial_cmp breaks transitivity
+        let health_cmp = b.health_score.total_cmp(&a.health_score);
         if health_cmp != Ordering::Equal {
             return health_cmp;
         }
@@ -3770,11 +3766,8 @@ mod tests {
                 return quota_cmp;
             }
 
-            // Priority 2: Health score
-            let health_cmp = b
-                .health_score
-                .partial_cmp(&a.health_score)
-                .unwrap_or(Ordering::Equal);
+            // Priority 2: Health score (NaN-safe total order)
+            let health_cmp = b.health_score.total_cmp(&a.health_score);
             if health_cmp != Ordering::Equal {
                 return health_cmp;
             }

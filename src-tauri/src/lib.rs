@@ -444,6 +444,10 @@ pub fn run() {
             // modules::scheduler::start_scheduler(Some(app.handle().clone()), scheduler_state.inner().clone());
             info!("Smart scheduler (Automatic Warmup) is DISABLED.");
 
+            // Start location recovery background loop
+            modules::location_recovery::start_location_recovery_loop(Some(app.handle().clone()));
+            info!("Location recovery background loop started.");
+
             // [PHASE 1] 已整合至 Axum 端口 (8045)，不再单独启动 19527 端口
             info!("Management API integrated into main proxy server (port 8045)");
 
@@ -528,6 +532,9 @@ pub fn run() {
             commands::should_check_updates,
             commands::update_last_check_time,
             commands::toggle_proxy_status,
+            // Location recovery commands
+            commands::trigger_location_recovery,
+            commands::get_location_recovery_status,
             // Proxy service commands
             commands::proxy::start_proxy_service,
             commands::proxy::stop_proxy_service,

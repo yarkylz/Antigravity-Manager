@@ -52,6 +52,9 @@ pub struct Account {
     /// [NEW] Raw API error response for debugging (Show Raw in UI)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_error_response: Option<String>,
+    /// [NEW] Account is blocked due to unsupported location (403 location restriction)
+    #[serde(default)]
+    pub location_blocked: bool,
     pub created_at: i64,
     pub last_used: i64,
     /// 绑定的代理 ID (None = 使用全局代理池)
@@ -88,6 +91,7 @@ impl Account {
             validation_blocked_reason: None,
             validation_url: None,
             raw_error_response: None,
+            location_blocked: false,
             created_at: now,
             last_used: now,
             proxy_id: None,
@@ -146,6 +150,9 @@ pub struct AccountSummary {
     /// Raw API error response for debugging
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub raw_error_response: Option<String>,
+    /// [NEW] Account is blocked due to unsupported location
+    #[serde(default)]
+    pub location_blocked: bool,
 }
 
 impl AccountIndex {

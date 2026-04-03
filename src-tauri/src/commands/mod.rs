@@ -1087,6 +1087,28 @@ pub async fn warm_up_account(account_id: String) -> Result<String, String> {
     modules::quota::warm_up_account(&account_id).await
 }
 
+// --- Location Recovery ---
+
+/// Manually trigger a location recovery cycle
+#[tauri::command]
+pub async fn trigger_location_recovery(app: tauri::AppHandle) -> Result<String, String> {
+    if modules::location_recovery::is_running() {
+        return Ok("Recovery cycle is already running".to_string());
+    }
+    modules::logger::log_info("[LocationRecovery] Manual trigger from UI");
+    let handle = app.clone();
+    tauri::async_runtime::spawn(async move {
+        modules::location_recovery::run_recovery_cycle(Some(handle)).await;
+    });
+    Ok("Recovery cycle started".to_string())
+}
+
+/// Get location recovery status (is a cycle currently running?)
+#[tauri::command]
+pub async fn get_location_recovery_status() -> Result<bool, String> {
+    Ok(modules::location_recovery::is_running())
+}
+
 // --- Onboarding & Test Request ---
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]

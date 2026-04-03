@@ -48,6 +48,9 @@ pub struct QuotaData {
     /// 模型淘汰重定向规则表 (old_model_id -> new_model_id)
     #[serde(default)]
     pub model_forwarding_rules: std::collections::HashMap<String, String>,
+    /// [NEW] Account is blocked due to unsupported location (subset of is_forbidden)
+    #[serde(default)]
+    pub is_location_blocked: bool,
 }
 
 impl QuotaData {
@@ -61,6 +64,7 @@ impl QuotaData {
             restriction_reason: None,
             validation_url: None,
             model_forwarding_rules: std::collections::HashMap::new(),
+            is_location_blocked: false,
         }
     }
 

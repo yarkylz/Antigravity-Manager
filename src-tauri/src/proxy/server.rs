@@ -143,6 +143,8 @@ struct AccountResponse {
     validation_blocked: bool,
     validation_blocked_until: Option<i64>,
     validation_blocked_reason: Option<String>,
+    /// [NEW] Location-based 403 block
+    location_blocked: bool,
     quota: Option<QuotaResponse>,
     device_bound: bool,
     last_used: i64,
@@ -158,6 +160,7 @@ struct QuotaResponse {
     subscription_tier: Option<String>,
     is_forbidden: bool,
     restriction_reason: Option<String>,
+    is_location_blocked: bool,
 }
 
 #[derive(Serialize)]
@@ -203,6 +206,7 @@ fn to_account_response(
             subscription_tier: q.subscription_tier.clone(),
             is_forbidden: q.is_forbidden,
             restriction_reason: q.restriction_reason.clone(),
+            is_location_blocked: q.is_location_blocked,
         }),
         device_bound: account.device_profile.is_some(),
         last_used: account.last_used,
@@ -212,6 +216,7 @@ fn to_account_response(
         validation_blocked: account.validation_blocked,
         validation_blocked_until: account.validation_blocked_until,
         validation_blocked_reason: account.validation_blocked_reason.clone(),
+        location_blocked: account.location_blocked,
     }
 }
 
@@ -927,6 +932,7 @@ async fn admin_list_accounts(
                 subscription_tier: q.subscription_tier,
                 is_forbidden: q.is_forbidden,
                 restriction_reason: q.restriction_reason,
+                is_location_blocked: q.is_location_blocked,
             });
 
             AccountResponse {
@@ -944,6 +950,7 @@ async fn admin_list_accounts(
                 validation_blocked: acc.validation_blocked,
                 validation_blocked_until: acc.validation_blocked_until,
                 validation_blocked_reason: acc.validation_blocked_reason,
+                location_blocked: acc.location_blocked,
                 quota,
                 device_bound: acc.device_profile.is_some(),
                 last_used: acc.last_used,
@@ -1008,6 +1015,7 @@ async fn admin_get_current_account(
                 subscription_tier: q.subscription_tier,
                 is_forbidden: q.is_forbidden,
                 restriction_reason: q.restriction_reason,
+                is_location_blocked: q.is_location_blocked,
             });
 
             AccountResponse {
@@ -1022,6 +1030,7 @@ async fn admin_get_current_account(
                 proxy_disabled_reason: acc.proxy_disabled_reason,
                 proxy_disabled_at: acc.proxy_disabled_at,
                 protected_models: acc.protected_models.into_iter().collect(),
+                location_blocked: acc.location_blocked,
                 validation_blocked: acc.validation_blocked,
                 validation_blocked_until: acc.validation_blocked_until,
                 validation_blocked_reason: acc.validation_blocked_reason,

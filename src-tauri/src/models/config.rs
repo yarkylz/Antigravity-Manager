@@ -30,6 +30,8 @@ pub struct AppConfig {
     pub hidden_menu_items: Vec<String>, // Hidden menu item path list
     #[serde(default)]
     pub cloudflared: CloudflaredConfig, // [NEW] Cloudflared configuration
+    #[serde(default)]
+    pub location_recovery: LocationRecoveryConfig, // [NEW] Location recovery configuration
 }
 
 /// Scheduled warmup configuration
@@ -168,6 +170,37 @@ impl Default for CircuitBreakerConfig {
     }
 }
 
+/// Location recovery configuration — periodically pings quota API through proxy
+/// to check if location-blocked accounts have been unblocked
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocationRecoveryConfig {
+    /// Whether location recovery is enabled
+    pub enabled: bool,
+
+    /// Recovery check interval in minutes (default: 30)
+    #[serde(default = "default_location_recovery_interval")]
+    pub interval_minutes: u32,
+}
+
+fn default_location_recovery_interval() -> u32 {
+    30
+}
+
+impl LocationRecoveryConfig {
+    pub fn new() -> Self {
+        Self {
+            enabled: false,
+            interval_minutes: default_location_recovery_interval(),
+        }
+    }
+}
+
+impl Default for LocationRecoveryConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AppConfig {
     pub fn new() -> Self {
         Self {
@@ -188,6 +221,7 @@ impl AppConfig {
             circuit_breaker: CircuitBreakerConfig::default(),
             hidden_menu_items: Vec::new(),
             cloudflared: CloudflaredConfig::default(),
+            location_recovery: LocationRecoveryConfig::default(),
         }
     }
 }

@@ -530,6 +530,7 @@ fn rebuild_index_from_accounts_in_dir(data_dir: &PathBuf) -> Result<AccountIndex
                                     proxy_id: account.proxy_id,
                                     validation_url: account.validation_url,
                                     raw_error_response: account.raw_error_response,
+                                    location_blocked: account.location_blocked,
                                 });
                             }
                             Err(e) => {
@@ -795,6 +796,7 @@ pub fn add_account(
         proxy_id: account.proxy_id.clone(),
         validation_url: account.validation_url.clone(),
         raw_error_response: account.raw_error_response.clone(),
+        location_blocked: account.location_blocked,
     });
 
     // If first account, set as current
@@ -1425,10 +1427,33 @@ pub fn mark_account_forbidden(
         account.raw_error_response = Some(raw.to_string());
     }
 
+    // [NEW] Detect location-based 403 via two signals:
+    // 1. forbidden_reason text contains location-related keywords
+    // 2. restriction_reason == "UNSUPPORTED_LOCATION" (from quota API)
+    let reason_lower = reason.to_lowercase();
+    let is_location_blocked = reason_lower.contains("not currently available in your location")
+        || reason_lower.contains("unsupported_location")
+        || reason_lower.contains("unsupported location")
+        || account
+            .quota
+            .as_ref()
+            .and_then(|q| q.restriction_reason.as_deref())
+            .map(|r| r == "UNSUPPORTED_LOCATION")
+            .unwrap_or(false);
+
+    if is_location_blocked {
+        tracing::info!(
+            "[mark_account_forbidden] Detected location-based 403 for account {}",
+            account_id
+        );
+        account.location_blocked = true;
+    }
+
     // 1. Update quota status
     if let Some(ref mut q) = account.quota {
         q.is_forbidden = true;
         q.forbidden_reason = Some(reason.to_string());
+        q.is_location_blocked = is_location_blocked;
         // Also set validation_url in quota for frontend access
         if let Some(ref url) = extracted_validation_url {
             q.validation_url = Some(url.clone());
@@ -1443,6 +1468,7 @@ pub fn mark_account_forbidden(
             is_forbidden: true,
             forbidden_reason: Some(reason.to_string()),
             model_forwarding_rules: std::collections::HashMap::new(),
+            is_location_blocked,
         });
     }
 
@@ -1462,6 +1488,7 @@ pub fn mark_account_forbidden(
     let mut index = load_account_index()?;
     if let Some(summary) = index.accounts.iter_mut().find(|a| a.id == account_id) {
         summary.proxy_disabled = true;
+        summary.location_blocked = is_location_blocked;
         summary.validation_url = account.validation_url.clone();
         summary.raw_error_response = account.raw_error_response.clone();
         save_account_index(&index)?;
@@ -1487,6 +1514,7 @@ pub fn clear_account_forbidden(account_id: &str) -> Result<(), String> {
     account.validation_blocked_reason = None;
     account.validation_url = None;
     account.raw_error_response = None;
+    account.location_blocked = false;
 
     // 2. Re-enable proxy
     account.proxy_disabled = false;
@@ -1498,6 +1526,7 @@ pub fn clear_account_forbidden(account_id: &str) -> Result<(), String> {
         q.is_forbidden = false;
         q.forbidden_reason = None;
         q.validation_url = None;
+        q.is_location_blocked = false;
     }
 
     save_account(&account)?;
@@ -1506,6 +1535,7 @@ pub fn clear_account_forbidden(account_id: &str) -> Result<(), String> {
     let mut index = load_account_index()?;
     if let Some(summary) = index.accounts.iter_mut().find(|a| a.id == account_id) {
         summary.proxy_disabled = false;
+        summary.location_blocked = false;
         summary.validation_url = None;
         summary.raw_error_response = None;
         save_account_index(&index)?;

@@ -5,6 +5,7 @@ import {
   Download,
   LayoutGrid,
   List,
+  MapPin,
   RefreshCw,
   Search,
   Sparkles,
@@ -32,7 +33,7 @@ import { isTauri } from "../utils/env";
 import { request as invoke } from "../utils/request";
 import { useTranslation } from "react-i18next";
 
-type FilterType = "all" | "pro" | "ultra" | "free" | "restricted";
+type FilterType = "all" | "pro" | "ultra" | "free" | "restricted" | "location";
 type ViewMode = "list" | "grid";
 
 
@@ -319,6 +320,7 @@ function Accounts() {
         return tier && !tier.includes("pro") && !tier.includes("ultra") && !a.quota?.restriction_reason;
       }).length,
       restricted: searchedAccounts.filter((a) => !!a.quota?.restriction_reason).length,
+      location: searchedAccounts.filter((a) => !!a.location_blocked).length,
     };
   }, [searchedAccounts]);
 
@@ -341,6 +343,8 @@ function Accounts() {
       });
     } else if (filter === "restricted") {
       result = result.filter((a) => !!a.quota?.restriction_reason);
+    } else if (filter === "location") {
+      result = result.filter((a) => !!a.location_blocked);
     }
 
     return result;
@@ -1014,6 +1018,29 @@ function Accounts() {
                 : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
             )}>
               {filterCounts.restricted}
+            </span>
+          </button>
+
+          {/* LOCATION */}
+          <button
+            className={cn(
+              "flex px-2 lg:px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all items-center gap-1 lg:gap-1.5 whitespace-nowrap shrink-0",
+              filter === 'location'
+                ? "bg-white dark:bg-base-100 text-red-600 dark:text-red-400 shadow-sm ring-1 ring-black/5"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
+            )}
+            onClick={() => setFilter('location')}
+            title={`${t('accounts.location_blocked', 'Location')} (${filterCounts.location})`}
+          >
+            <MapPin className="w-3 h-3" />
+            <span className="hidden md:inline">{t('accounts.location_blocked', 'Location')}</span>
+            <span className={cn(
+              "px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-colors",
+              filter === 'location'
+                ? "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            )}>
+              {filterCounts.location}
             </span>
           </button>
         </div>

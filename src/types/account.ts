@@ -21,6 +21,7 @@ export interface Account {
     validation_blocked_reason?: string;
     validation_url?: string;
     raw_error_response?: string;  // Raw API error response for debugging (Show Raw)
+    location_blocked?: boolean;  // Account blocked due to unsupported location (403)
     created_at: number;
     last_used: number;
 }
@@ -43,6 +44,7 @@ export interface QuotaData {
     restriction_reason?: string;  // 账号受限原因 (来自 ineligibleTiers)
     validation_url?: string;  // 验证链接 URL
     model_forwarding_rules?: Record<string, string>; // 废弃模型转发表
+    is_location_blocked?: boolean;  // Account blocked due to unsupported location
 }
 
 export interface ModelQuota {

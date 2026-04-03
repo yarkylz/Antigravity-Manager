@@ -150,6 +150,9 @@
         "forbidden_badge": "403",
         "forbidden_tooltip": "API вернул 403 Forbidden, у аккаунта нет прав для Gemini Code Assist",
         "forbidden_msg": "Запрещено, пропуск автообновления",
+        "location_blocked": "Локация",
+        "location_blocked_msg": "Ограничение по локации, восстановление в процессе",
+        "location_blocked_tooltip": "Аккаунт заблокирован из-за неподдерживаемой локации. Фоновое восстановление периодически проверяет снятие блокировки.",
         "status": {
             "forbidden": "403 Запрещено",
             "disabled": "Аккаунт отключен",

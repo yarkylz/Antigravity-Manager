@@ -1,7 +1,6 @@
 use serde::Serialize;
 use serde_json;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use uuid::Uuid;
@@ -531,6 +530,8 @@ fn rebuild_index_from_accounts_in_dir(data_dir: &PathBuf) -> Result<AccountIndex
                                     validation_url: account.validation_url,
                                     raw_error_response: account.raw_error_response,
                                     location_blocked: account.location_blocked,
+                                    ban_blocked: account.ban_blocked,
+                                    age_blocked: account.age_blocked,
                                 });
                             }
                             Err(e) => {
@@ -797,6 +798,8 @@ pub fn add_account(
         validation_url: account.validation_url.clone(),
         raw_error_response: account.raw_error_response.clone(),
         location_blocked: account.location_blocked,
+        ban_blocked: account.ban_blocked,
+        age_blocked: account.age_blocked,
     });
 
     // If first account, set as current

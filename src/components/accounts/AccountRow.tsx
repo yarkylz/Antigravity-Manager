@@ -1,4 +1,4 @@
-import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, Clock, ToggleLeft, ToggleRight, Fingerprint, AlertTriangle, Globe, MapPin } from 'lucide-react';
+import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, Clock, ToggleLeft, ToggleRight, Fingerprint, AlertTriangle, Globe, MapPin, ShieldAlert } from 'lucide-react';
 import { Account } from '../../types/account';
 import { getQuotaColor, formatTimeRemaining, getTimeRemainingColor } from '../../utils/format';
 import { cn } from '../../utils/cn';
@@ -123,7 +123,7 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                             </span>
                         )}
 
-                        {account.quota?.is_forbidden && !account.location_blocked && (
+                        {account.quota?.is_forbidden && !account.location_blocked && !account.ban_blocked && !account.age_blocked && (
                             <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50" title={t('accounts.forbidden_tooltip')}>
                                 <Lock className="w-2.5 h-2.5" />
                                 <span>{t('accounts.forbidden')}</span>
@@ -134,6 +134,20 @@ function AccountRow({ account, selected, onSelect, isCurrent, isRefreshing, isSw
                             <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50" title={t('accounts.location_blocked_tooltip', 'Account blocked due to unsupported location')}>
                                 <MapPin className="w-2.5 h-2.5" />
                                 <span>{t('accounts.location_blocked', 'LOCATION')}</span>
+                            </span>
+                        )}
+
+                        {account.ban_blocked && (
+                            <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50" title={t('accounts.ban_blocked_tooltip', 'Account banned due to TOS violation')}>
+                                <Ban className="w-2.5 h-2.5" />
+                                <span>{t('accounts.ban_blocked', 'BAN')}</span>
+                            </span>
+                        )}
+
+                        {account.age_blocked && (
+                            <span className="px-2 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 text-[10px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50" title={t('accounts.age_blocked_tooltip', 'Account blocked due to age restriction (under 18)')}>
+                                <ShieldAlert className="w-2.5 h-2.5" />
+                                <span>{t('accounts.age_blocked', 'AGE')}</span>
                             </span>
                         )}
 

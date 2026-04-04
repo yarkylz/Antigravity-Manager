@@ -2,12 +2,14 @@
 
 import {
   AlertTriangle,
+  Ban,
   Download,
   LayoutGrid,
   List,
   MapPin,
   RefreshCw,
   Search,
+  ShieldAlert,
   Sparkles,
   ToggleLeft,
   ToggleRight,
@@ -33,7 +35,7 @@ import { isTauri } from "../utils/env";
 import { request as invoke } from "../utils/request";
 import { useTranslation } from "react-i18next";
 
-type FilterType = "all" | "pro" | "ultra" | "free" | "restricted" | "location";
+type FilterType = "all" | "pro" | "ultra" | "free" | "restricted" | "location" | "ban" | "age" | "disabled";
 type ViewMode = "list" | "grid";
 
 
@@ -308,7 +310,7 @@ function Accounts() {
   // 计算各筛选状态下的数量 (基于搜索结果)
   const filterCounts = useMemo(() => {
     return {
-      all: searchedAccounts.length,
+      all: searchedAccounts.filter((a) => !a.disabled).length,
       pro: searchedAccounts.filter((a) =>
         a.quota?.subscription_tier?.toLowerCase().includes("pro"),
       ).length,
@@ -321,6 +323,9 @@ function Accounts() {
       }).length,
       restricted: searchedAccounts.filter((a) => !!a.quota?.restriction_reason).length,
       location: searchedAccounts.filter((a) => !!a.location_blocked).length,
+      ban: searchedAccounts.filter((a) => !!a.ban_blocked).length,
+      age: searchedAccounts.filter((a) => !!a.age_blocked).length,
+      disabled: searchedAccounts.filter((a) => !!a.disabled).length,
     };
   }, [searchedAccounts]);
 
@@ -328,7 +333,9 @@ function Accounts() {
   const filteredAccounts = useMemo(() => {
     let result = searchedAccounts;
 
-    if (filter === "pro") {
+    if (filter === "all") {
+      result = result.filter((a) => !a.disabled);
+    } else if (filter === "pro") {
       result = result.filter((a) =>
         a.quota?.subscription_tier?.toLowerCase().includes("pro"),
       );
@@ -345,6 +352,12 @@ function Accounts() {
       result = result.filter((a) => !!a.quota?.restriction_reason);
     } else if (filter === "location") {
       result = result.filter((a) => !!a.location_blocked);
+    } else if (filter === "ban") {
+      result = result.filter((a) => !!a.ban_blocked);
+    } else if (filter === "age") {
+      result = result.filter((a) => !!a.age_blocked);
+    } else if (filter === "disabled") {
+      result = result.filter((a) => !!a.disabled);
     }
 
     return result;
@@ -1041,6 +1054,75 @@ function Accounts() {
                 : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
             )}>
               {filterCounts.location}
+            </span>
+          </button>
+
+          {/* BAN */}
+          <button
+            className={cn(
+              "flex px-2 lg:px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all items-center gap-1 lg:gap-1.5 whitespace-nowrap shrink-0",
+              filter === 'ban'
+                ? "bg-white dark:bg-base-100 text-red-600 dark:text-red-400 shadow-sm ring-1 ring-black/5"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
+            )}
+            onClick={() => setFilter('ban')}
+            title={`${t('accounts.ban_blocked', 'Ban')} (${filterCounts.ban})`}
+          >
+            <Ban className="w-3 h-3" />
+            <span className="hidden md:inline">{t('accounts.ban_blocked', 'Ban')}</span>
+            <span className={cn(
+              "px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-colors",
+              filter === 'ban'
+                ? "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            )}>
+              {filterCounts.ban}
+            </span>
+          </button>
+
+          {/* AGE */}
+          <button
+            className={cn(
+              "flex px-2 lg:px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all items-center gap-1 lg:gap-1.5 whitespace-nowrap shrink-0",
+              filter === 'age'
+                ? "bg-white dark:bg-base-100 text-red-600 dark:text-red-400 shadow-sm ring-1 ring-black/5"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
+            )}
+            onClick={() => setFilter('age')}
+            title={`${t('accounts.age_blocked', 'Age')} (${filterCounts.age})`}
+          >
+            <ShieldAlert className="w-3 h-3" />
+            <span className="hidden md:inline">{t('accounts.age_blocked', 'Age')}</span>
+            <span className={cn(
+              "px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-colors",
+              filter === 'age'
+                ? "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            )}>
+              {filterCounts.age}
+            </span>
+          </button>
+
+          {/* DISABLED */}
+          <button
+            className={cn(
+              "flex px-2 lg:px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all items-center gap-1 lg:gap-1.5 whitespace-nowrap shrink-0",
+              filter === 'disabled'
+                ? "bg-white dark:bg-base-100 text-rose-600 dark:text-rose-400 shadow-sm ring-1 ring-black/5"
+                : "text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-base-content hover:bg-white/40"
+            )}
+            onClick={() => setFilter('disabled')}
+            title={`${t('accounts.disabled', 'Disabled')} (${filterCounts.disabled})`}
+          >
+            <Ban className="w-3 h-3" />
+            <span className="hidden md:inline">{t('accounts.disabled', 'Disabled')}</span>
+            <span className={cn(
+              "px-1.5 py-0.5 rounded-md text-[10px] font-bold transition-colors",
+              filter === 'disabled'
+                ? "bg-rose-100 dark:bg-rose-500/20 text-rose-600 dark:text-rose-400"
+                : "bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400"
+            )}>
+              {filterCounts.disabled}
             </span>
           </button>
         </div>

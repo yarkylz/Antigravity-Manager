@@ -55,6 +55,12 @@ pub struct Account {
     /// [NEW] Account is blocked due to unsupported location (403 location restriction)
     #[serde(default)]
     pub location_blocked: bool,
+    /// [NEW] Account is blocked due to Terms of Service violation (ban)
+    #[serde(default)]
+    pub ban_blocked: bool,
+    /// [NEW] Account is blocked due to age restriction (must be 18+)
+    #[serde(default)]
+    pub age_blocked: bool,
     pub created_at: i64,
     pub last_used: i64,
     /// 绑定的代理 ID (None = 使用全局代理池)
@@ -92,6 +98,8 @@ impl Account {
             validation_url: None,
             raw_error_response: None,
             location_blocked: false,
+            ban_blocked: false,
+            age_blocked: false,
             created_at: now,
             last_used: now,
             proxy_id: None,
@@ -153,6 +161,12 @@ pub struct AccountSummary {
     /// [NEW] Account is blocked due to unsupported location
     #[serde(default)]
     pub location_blocked: bool,
+    /// [NEW] Account is blocked due to Terms of Service violation (ban)
+    #[serde(default)]
+    pub ban_blocked: bool,
+    /// [NEW] Account is blocked due to age restriction (must be 18+)
+    #[serde(default)]
+    pub age_blocked: bool,
 }
 
 impl AccountIndex {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, ToggleLeft, ToggleRight, Fingerprint, Sparkles, Tag, X, Check, Clock, Bot, Rocket, TestTube2, AlertTriangle, Globe, ChevronDown, MapPin } from 'lucide-react';
+import { ArrowRightLeft, RefreshCw, Trash2, Download, Info, Lock, Ban, Diamond, Gem, Circle, ToggleLeft, ToggleRight, Fingerprint, Sparkles, Tag, X, Check, Clock, Bot, Rocket, TestTube2, AlertTriangle, Globe, ChevronDown, MapPin, ShieldAlert } from 'lucide-react';
 import { Account } from '../../types/account';
 import { cn } from '../../utils/cn';
 import { useTranslation } from 'react-i18next';
@@ -175,7 +175,7 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                     {t('accounts.proxy_disabled').toUpperCase()}
                                 </span>
                             )}
-                            {account.quota?.is_forbidden && !account.validation_url && !account.location_blocked && (
+                            {account.quota?.is_forbidden && !account.validation_url && !account.location_blocked && !account.ban_blocked && !account.age_blocked && (
                                 <span className="px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[9px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50">
                                     <Lock className="w-2.5 h-2.5" />
                                     {t('accounts.forbidden').toUpperCase()}
@@ -185,6 +185,18 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
                                 <span className="px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[9px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50">
                                     <MapPin className="w-2.5 h-2.5" />
                                     {t('accounts.location_blocked', 'LOCATION').toUpperCase()}
+                                </span>
+                            )}
+                            {account.ban_blocked && (
+                                <span className="px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[9px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50">
+                                    <Ban className="w-2.5 h-2.5" />
+                                    {t('accounts.ban_blocked', 'BAN').toUpperCase()}
+                                </span>
+                            )}
+                            {account.age_blocked && (
+                                <span className="px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 text-[9px] font-bold flex items-center gap-1 shadow-sm border border-red-200/50">
+                                    <ShieldAlert className="w-2.5 h-2.5" />
+                                    {t('accounts.age_blocked', 'AGE').toUpperCase()}
                                 </span>
                             )}
                             {(account.validation_blocked || account.validation_url) && (
@@ -335,15 +347,15 @@ function AccountCard({ account, selected, onSelect, isCurrent: propIsCurrent, is
 
             {/* 配额展示 */}
             <div className="flex-1 px-2 mb-2 overflow-y-auto scrollbar-none">
-                {isDisabled || account.quota?.is_forbidden || account.proxy_disabled || account.validation_blocked || account.location_blocked ? (
+                {isDisabled || account.quota?.is_forbidden || account.proxy_disabled || account.validation_blocked || account.location_blocked || account.ban_blocked || account.age_blocked ? (
                     <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 h-full py-4 text-center">
                         <div className={cn(
                             "flex items-center gap-1.5",
                             account.validation_blocked ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"
                         )}>
-                            {account.validation_blocked ? <Clock className="w-4 h-4" /> : account.location_blocked ? <MapPin className="w-4 h-4" /> : (isDisabled || account.proxy_disabled ? <Ban className="w-4 h-4" /> : <Lock className="w-4 h-4" />)}
+                            {account.validation_blocked ? <Clock className="w-4 h-4" /> : account.location_blocked ? <MapPin className="w-4 h-4" /> : account.ban_blocked ? <Ban className="w-4 h-4" /> : account.age_blocked ? <ShieldAlert className="w-4 h-4" /> : (isDisabled || account.proxy_disabled ? <Ban className="w-4 h-4" /> : <Lock className="w-4 h-4" />)}
                             <span className="text-[11px] font-bold">
-                                {account.validation_blocked ? t('accounts.status.validation_required') : account.location_blocked ? t('accounts.location_blocked_msg', 'Location restricted') : (isDisabled ? t('accounts.status.disabled') : account.proxy_disabled ? t('accounts.status.proxy_disabled') : t('accounts.forbidden_msg'))}
+                                {account.validation_blocked ? t('accounts.status.validation_required') : account.location_blocked ? t('accounts.location_blocked_msg', 'Location restricted') : account.ban_blocked ? t('accounts.ban_blocked_msg', 'Account banned (TOS violation)') : account.age_blocked ? t('accounts.age_blocked_msg', 'Age restricted (under 18)') : (isDisabled ? t('accounts.status.disabled') : account.proxy_disabled ? t('accounts.status.proxy_disabled') : t('accounts.forbidden_msg'))}
                             </span>
                         </div>
                         <div className={cn(

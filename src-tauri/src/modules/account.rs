@@ -1441,6 +1441,15 @@ pub fn mark_account_forbidden(
             .map(|r| r == "UNSUPPORTED_LOCATION")
             .unwrap_or(false);
 
+    // [NEW] Detect ban-based 403 (Terms of Service violation)
+    let is_ban_blocked = reason_lower.contains("disabled in this account for violation of terms of service")
+        || reason_lower.contains("violation of terms of service")
+        || reason_lower.contains("terms of service violation");
+
+    // [NEW] Detect age-based 403 (must be 18+)
+    let is_age_blocked = reason_lower.contains("not eligible")
+        && reason_lower.contains("must be 18 years old");
+
     if is_location_blocked {
         tracing::info!(
             "[mark_account_forbidden] Detected location-based 403 for account {}",
@@ -1449,11 +1458,29 @@ pub fn mark_account_forbidden(
         account.location_blocked = true;
     }
 
+    if is_ban_blocked {
+        tracing::info!(
+            "[mark_account_forbidden] Detected ban-based 403 for account {}",
+            account_id
+        );
+        account.ban_blocked = true;
+    }
+
+    if is_age_blocked {
+        tracing::info!(
+            "[mark_account_forbidden] Detected age-based 403 for account {}",
+            account_id
+        );
+        account.age_blocked = true;
+    }
+
     // 1. Update quota status
     if let Some(ref mut q) = account.quota {
         q.is_forbidden = true;
         q.forbidden_reason = Some(reason.to_string());
         q.is_location_blocked = is_location_blocked;
+        q.is_ban_blocked = is_ban_blocked;
+        q.is_age_blocked = is_age_blocked;
         // Also set validation_url in quota for frontend access
         if let Some(ref url) = extracted_validation_url {
             q.validation_url = Some(url.clone());
@@ -1469,6 +1496,8 @@ pub fn mark_account_forbidden(
             forbidden_reason: Some(reason.to_string()),
             model_forwarding_rules: std::collections::HashMap::new(),
             is_location_blocked,
+            is_ban_blocked,
+            is_age_blocked,
         });
     }
 
@@ -1489,6 +1518,8 @@ pub fn mark_account_forbidden(
     if let Some(summary) = index.accounts.iter_mut().find(|a| a.id == account_id) {
         summary.proxy_disabled = true;
         summary.location_blocked = is_location_blocked;
+        summary.ban_blocked = is_ban_blocked;
+        summary.age_blocked = is_age_blocked;
         summary.validation_url = account.validation_url.clone();
         summary.raw_error_response = account.raw_error_response.clone();
         save_account_index(&index)?;
@@ -1515,6 +1546,8 @@ pub fn clear_account_forbidden(account_id: &str) -> Result<(), String> {
     account.validation_url = None;
     account.raw_error_response = None;
     account.location_blocked = false;
+    account.ban_blocked = false;
+    account.age_blocked = false;
 
     // 2. Re-enable proxy
     account.proxy_disabled = false;
@@ -1527,6 +1560,8 @@ pub fn clear_account_forbidden(account_id: &str) -> Result<(), String> {
         q.forbidden_reason = None;
         q.validation_url = None;
         q.is_location_blocked = false;
+        q.is_ban_blocked = false;
+        q.is_age_blocked = false;
     }
 
     save_account(&account)?;
@@ -1536,6 +1571,8 @@ pub fn clear_account_forbidden(account_id: &str) -> Result<(), String> {
     if let Some(summary) = index.accounts.iter_mut().find(|a| a.id == account_id) {
         summary.proxy_disabled = false;
         summary.location_blocked = false;
+        summary.ban_blocked = false;
+        summary.age_blocked = false;
         summary.validation_url = None;
         summary.raw_error_response = None;
         save_account_index(&index)?;

@@ -145,6 +145,10 @@ struct AccountResponse {
     validation_blocked_reason: Option<String>,
     /// [NEW] Location-based 403 block
     location_blocked: bool,
+    /// [NEW] Ban-based 403 block (TOS violation)
+    ban_blocked: bool,
+    /// [NEW] Age-based 403 block (under 18)
+    age_blocked: bool,
     quota: Option<QuotaResponse>,
     device_bound: bool,
     last_used: i64,
@@ -161,6 +165,8 @@ struct QuotaResponse {
     is_forbidden: bool,
     restriction_reason: Option<String>,
     is_location_blocked: bool,
+    is_ban_blocked: bool,
+    is_age_blocked: bool,
 }
 
 #[derive(Serialize)]
@@ -207,6 +213,8 @@ fn to_account_response(
             is_forbidden: q.is_forbidden,
             restriction_reason: q.restriction_reason.clone(),
             is_location_blocked: q.is_location_blocked,
+            is_ban_blocked: q.is_ban_blocked,
+            is_age_blocked: q.is_age_blocked,
         }),
         device_bound: account.device_profile.is_some(),
         last_used: account.last_used,
@@ -217,6 +225,8 @@ fn to_account_response(
         validation_blocked_until: account.validation_blocked_until,
         validation_blocked_reason: account.validation_blocked_reason.clone(),
         location_blocked: account.location_blocked,
+        ban_blocked: account.ban_blocked,
+        age_blocked: account.age_blocked,
     }
 }
 
@@ -933,6 +943,8 @@ async fn admin_list_accounts(
                 is_forbidden: q.is_forbidden,
                 restriction_reason: q.restriction_reason,
                 is_location_blocked: q.is_location_blocked,
+                is_ban_blocked: q.is_ban_blocked,
+                is_age_blocked: q.is_age_blocked,
             });
 
             AccountResponse {
@@ -951,6 +963,8 @@ async fn admin_list_accounts(
                 validation_blocked_until: acc.validation_blocked_until,
                 validation_blocked_reason: acc.validation_blocked_reason,
                 location_blocked: acc.location_blocked,
+                ban_blocked: acc.ban_blocked,
+                age_blocked: acc.age_blocked,
                 quota,
                 device_bound: acc.device_profile.is_some(),
                 last_used: acc.last_used,
@@ -1016,6 +1030,8 @@ async fn admin_get_current_account(
                 is_forbidden: q.is_forbidden,
                 restriction_reason: q.restriction_reason,
                 is_location_blocked: q.is_location_blocked,
+                is_ban_blocked: q.is_ban_blocked,
+                is_age_blocked: q.is_age_blocked,
             });
 
             AccountResponse {
@@ -1031,6 +1047,8 @@ async fn admin_get_current_account(
                 proxy_disabled_at: acc.proxy_disabled_at,
                 protected_models: acc.protected_models.into_iter().collect(),
                 location_blocked: acc.location_blocked,
+                ban_blocked: acc.ban_blocked,
+                age_blocked: acc.age_blocked,
                 validation_blocked: acc.validation_blocked,
                 validation_blocked_until: acc.validation_blocked_until,
                 validation_blocked_reason: acc.validation_blocked_reason,

@@ -51,6 +51,12 @@ pub struct QuotaData {
     /// [NEW] Account is blocked due to unsupported location (subset of is_forbidden)
     #[serde(default)]
     pub is_location_blocked: bool,
+    /// [NEW] Account is blocked due to Terms of Service violation (ban)
+    #[serde(default)]
+    pub is_ban_blocked: bool,
+    /// [NEW] Account is blocked due to age restriction (must be 18+)
+    #[serde(default)]
+    pub is_age_blocked: bool,
 }
 
 impl QuotaData {
@@ -65,6 +71,8 @@ impl QuotaData {
             validation_url: None,
             model_forwarding_rules: std::collections::HashMap::new(),
             is_location_blocked: false,
+            is_ban_blocked: false,
+            is_age_blocked: false,
         }
     }
 

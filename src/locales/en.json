@@ -165,6 +165,12 @@
         "location_blocked": "Location",
         "location_blocked_msg": "Location restricted, recovery in progress",
         "location_blocked_tooltip": "Account blocked due to unsupported location. Background recovery will periodically check if the block is lifted.",
+        "ban_blocked": "Ban",
+        "ban_blocked_msg": "Account banned (TOS violation)",
+        "ban_blocked_tooltip": "Account blocked due to Terms of Service violation. Background recovery will periodically check if the block is lifted.",
+        "age_blocked": "Age",
+        "age_blocked_msg": "Age restricted (under 18)",
+        "age_blocked_tooltip": "Account blocked due to age restriction (under 18). Background recovery will periodically check if the block is lifted.",
         "status": {
             "forbidden": "403 Forbidden",
             "disabled": "Account Disabled",

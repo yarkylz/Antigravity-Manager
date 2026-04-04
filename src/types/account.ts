@@ -22,6 +22,8 @@ export interface Account {
     validation_url?: string;
     raw_error_response?: string;  // Raw API error response for debugging (Show Raw)
     location_blocked?: boolean;  // Account blocked due to unsupported location (403)
+    ban_blocked?: boolean;  // Account blocked due to TOS violation (403)
+    age_blocked?: boolean;  // Account blocked due to age restriction (under 18) (403)
     created_at: number;
     last_used: number;
 }
@@ -45,6 +47,8 @@ export interface QuotaData {
     validation_url?: string;  // 验证链接 URL
     model_forwarding_rules?: Record<string, string>; // 废弃模型转发表
     is_location_blocked?: boolean;  // Account blocked due to unsupported location
+    is_ban_blocked?: boolean;  // Account blocked due to TOS violation
+    is_age_blocked?: boolean;  // Account blocked due to age restriction (under 18)
 }
 
 export interface ModelQuota {

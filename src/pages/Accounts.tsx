@@ -310,7 +310,7 @@ function Accounts() {
   // 计算各筛选状态下的数量 (基于搜索结果)
   const filterCounts = useMemo(() => {
     return {
-      all: searchedAccounts.filter((a) => !a.disabled).length,
+      all: searchedAccounts.filter((a) => !a.disabled && !a.ban_blocked && !a.age_blocked && !a.location_blocked).length,
       pro: searchedAccounts.filter((a) =>
         a.quota?.subscription_tier?.toLowerCase().includes("pro"),
       ).length,
@@ -334,7 +334,7 @@ function Accounts() {
     let result = searchedAccounts;
 
     if (filter === "all") {
-      result = result.filter((a) => !a.disabled);
+      result = result.filter((a) => !a.disabled && !a.ban_blocked && !a.age_blocked && !a.location_blocked);
     } else if (filter === "pro") {
       result = result.filter((a) =>
         a.quota?.subscription_tier?.toLowerCase().includes("pro"),
@@ -922,7 +922,7 @@ function Accounts() {
         </div>
 
         {/* 过滤按钮组 - 图标化响应式 */}
-        <div className="flex gap-0.5 bg-gray-100/80 dark:bg-base-200 p-1 rounded-xl border border-gray-200/50 dark:border-white/5 shrink-0">
+        <div className="flex gap-0.5 bg-gray-100/80 dark:bg-base-200 p-1 rounded-xl border border-gray-200/50 dark:border-white/5 overflow-x-auto scrollbar-none">
           {/* 全部 */}
           <button
             className={cn(
